@@ -154,7 +154,8 @@ bool JavaHost::IsJavaInstalled()
 
 #elif Rtt_WIN_ENV
 
-    return (JavaHost::GetJrePath() != NULL);
+    const char *javaHome = JavaHost::GetJrePath();
+    return (javaHome && javaHome[0]);
 
 #endif
 }
@@ -352,7 +353,7 @@ static bool CopyJavaRuntimeRegistryKeyPathTo(WinString* pPath)
 
 		if (JavaRegistryLookup(JRE_REGISTRY_LOCATION2, JAVA_REGISTRY_VERSION, &versionName))
 		{
-			pPath->SetTCHAR(JRE_REGISTRY_LOCATION);
+			pPath->SetTCHAR(JRE_REGISTRY_LOCATION2);
 			pPath->Append("\\");
 			pPath->Append(versionName.GetUTF8());
 			return true;
@@ -407,6 +408,213 @@ bool CheckDirExists(LPCTSTR dirName)
 	return false;
 }
 
+bool CheckFileExists(LPCTSTR fileName)
+{
+	DWORD attributes = GetFileAttributes(fileName);
+	return ((INVALID_FILE_ATTRIBUTES != attributes) && (0 == (attributes & FILE_ATTRIBUTE_DIRECTORY)));
+}
+
+static TCHAR *
+FindLastPathSeparator(TCHAR *path)
+{
+	TCHAR *separator = _tcsrchr(path, _T('\\'));
+	TCHAR *slash = _tcsrchr(path, _T('/'));
+	if (slash && (!separator || slash > separator))
+	{
+		separator = slash;
+	}
+	return separator;
+}
+
+static LPCTSTR
+FindLastPathComponent(LPCTSTR path)
+{
+	if (!path)
+	{
+		return NULL;
+	}
+
+	LPCTSTR separator = _tcsrchr(path, _T('\\'));
+	LPCTSTR slash = _tcsrchr(path, _T('/'));
+	if (slash && (!separator || slash > separator))
+	{
+		separator = slash;
+	}
+
+	return (separator ? separator + 1 : path);
+}
+
+static bool
+RemoveLastPathComponent(WinString& path)
+{
+	TCHAR buffer[MAX_PATH] = _T("");
+	if (path.IsEmpty() || path.GetLength() >= MAX_PATH)
+	{
+		return false;
+	}
+
+	_tcscpy_s(buffer, MAX_PATH, path.GetTCHAR());
+	TCHAR *separator = FindLastPathSeparator(buffer);
+	if (!separator)
+	{
+		return false;
+	}
+
+	*separator = _T('\0');
+	path.SetTCHAR(buffer);
+	path.TrimEnd(L"\\/");
+	return !path.IsEmpty();
+}
+
+static void
+TrimMatchingQuotes(WinString& path)
+{
+	int length = path.GetLength();
+	if (length < 2)
+	{
+		return;
+	}
+
+	const TCHAR *text = path.GetTCHAR();
+	if ((text[0] == _T('"')) && (text[length - 1] == _T('"')))
+	{
+		path.DeleteRange(length - 1, 1);
+		path.DeleteRange(0, 1);
+	}
+}
+
+static bool
+CheckFileExistsInJavaHome(const WinString& javaHome, const char *relativePath)
+{
+	WinString filePath(javaHome);
+	if (!filePath.EndsWith("\\"))
+	{
+		filePath.Append("\\");
+	}
+	filePath.Append(relativePath);
+	return CheckFileExists(filePath.GetTCHAR());
+}
+
+static bool
+IsValidJdkPath(const WinString& javaHome)
+{
+	return !javaHome.IsEmpty()
+		&& CheckDirExists(javaHome.GetTCHAR())
+		&& CheckFileExistsInJavaHome(javaHome, "bin\\java.exe")
+		&& CheckFileExistsInJavaHome(javaHome, "bin\\javac.exe")
+		&& CheckFileExistsInJavaHome(javaHome, "bin\\jarsigner.exe")
+		&& CheckFileExistsInJavaHome(javaHome, "bin\\keytool.exe");
+}
+
+static bool
+CopyValidJdkPathTo(WinString javaHome, WinString *pPath)
+{
+	if (!pPath)
+	{
+		return false;
+	}
+
+	TrimMatchingQuotes(javaHome);
+	javaHome.TrimEnd(L"\\/");
+	if (IsValidJdkPath(javaHome))
+	{
+		pPath->SetTCHAR(javaHome.GetTCHAR());
+		return true;
+	}
+
+	// Be permissive if the user accidentally pointed JAVA_HOME at the JDK's bin folder.
+	WinString parentPath(javaHome);
+	if (RemoveLastPathComponent(parentPath) && IsValidJdkPath(parentPath))
+	{
+		pPath->SetTCHAR(parentPath.GetTCHAR());
+		return true;
+	}
+
+	return false;
+}
+
+static bool
+CopyJdkPathFromEnvironmentVariableTo(LPCTSTR variableName, WinString *pPath)
+{
+	TCHAR value[32767] = _T("");
+	DWORD result = GetEnvironmentVariable(variableName, value, (DWORD)_countof(value));
+	if ((0 == result) || (result >= _countof(value)))
+	{
+		return false;
+	}
+
+	TCHAR expandedValue[32767] = _T("");
+	DWORD expandedResult = ExpandEnvironmentStrings(value, expandedValue, (DWORD)_countof(expandedValue));
+	if ((expandedResult > 0) && (expandedResult < _countof(expandedValue)))
+	{
+		WinString javaHome(expandedValue);
+		return CopyValidJdkPathTo(javaHome, pPath);
+	}
+
+	WinString javaHome(value);
+	return CopyValidJdkPathTo(javaHome, pPath);
+}
+
+static bool
+CopyJdkPathFromEnvironmentTo(WinString *pPath)
+{
+	return CopyJdkPathFromEnvironmentVariableTo(_T("JAVA_HOME"), pPath)
+		|| CopyJdkPathFromEnvironmentVariableTo(_T("JDK_HOME"), pPath);
+}
+
+static bool
+CopyJdkPathFromToolPathTo(LPCTSTR toolPath, WinString *pPath)
+{
+	if (!toolPath || !toolPath[0])
+	{
+		return false;
+	}
+
+	WinString binPath(toolPath);
+	if (!RemoveLastPathComponent(binPath))
+	{
+		return false;
+	}
+
+	LPCTSTR lastComponent = FindLastPathComponent(binPath.GetTCHAR());
+	if (!lastComponent || (0 != _tcsicmp(lastComponent, _T("bin"))))
+	{
+		return false;
+	}
+
+	WinString javaHome(binPath);
+	if (!RemoveLastPathComponent(javaHome))
+	{
+		return false;
+	}
+
+	return CopyValidJdkPathTo(javaHome, pPath);
+}
+
+static bool
+CopyJdkPathFromPathTo(WinString *pPath)
+{
+	static LPCTSTR kTools[] =
+	{
+		_T("jarsigner.exe"),
+		_T("javac.exe"),
+		_T("keytool.exe"),
+		_T("java.exe")
+	};
+
+	for (int i = 0; i < (int)_countof(kTools); i++)
+	{
+		TCHAR toolPath[MAX_PATH] = _T("");
+		DWORD result = SearchPath(NULL, kTools[i], NULL, MAX_PATH, toolPath, NULL);
+		if ((result > 0) && (result < MAX_PATH) && CopyJdkPathFromToolPathTo(toolPath, pPath))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 // Fetches the Java Development Kit's JavaHome in registry.
 const char *JavaHost::GetJdkPath()
 {
@@ -414,9 +622,15 @@ const char *JavaHost::GetJdkPath()
 
     if( s_sJdkJavaHome[0] == '\0' )
 	{
-		// try to find bunled JRE
-		TCHAR buffer[MAX_PATH] = _T("");
 		WinString rootPath;
+		if (CopyJdkPathFromEnvironmentTo(&rootPath) || CopyJdkPathFromPathTo(&rootPath))
+		{
+			strcpy_s(s_sJdkJavaHome, MAX_PATH, rootPath.GetUTF8());
+			return s_sJdkJavaHome;
+		}
+
+		// try to find bundled JRE
+		TCHAR buffer[MAX_PATH] = _T("");
 		GetFullPathName(_T("jre"), MAX_PATH, buffer, NULL);
 		if (buffer[0] && CheckDirExists(buffer)) {
 			rootPath.SetTCHAR(buffer);
@@ -460,9 +674,15 @@ const char *JavaHost::GetJrePath()
 
     if( s_sJreJavaHome[0] == '\0' )
 	{
+		WinString rootPath;
+		if (CopyJdkPathFromEnvironmentTo(&rootPath) || CopyJdkPathFromPathTo(&rootPath))
+		{
+			strcpy_s(s_sJreJavaHome, MAX_PATH, rootPath.GetUTF8());
+			return s_sJreJavaHome;
+		}
+
 		// try to find bunled JRE
 		TCHAR buffer[MAX_PATH] = _T("");
-		WinString rootPath;
 		GetFullPathName(_T("jre\\jre"), MAX_PATH, buffer, NULL);
 		if (buffer[0] && CheckDirExists(buffer)) {
 			rootPath.SetTCHAR(buffer);
@@ -493,6 +713,15 @@ const char *JavaHost::GetJrePath()
 			if (JavaRegistryLookup(sRegistryKeyPath.GetTCHAR(), JDK_REGISTRY_JAVAHOME, &sValue))
 			{
 				strcpy_s(s_sJreJavaHome, MAX_PATH, sValue.GetUTF8());
+			}
+		}
+
+		if (s_sJreJavaHome[0] == '\0')
+		{
+			const char *jdkPath = JavaHost::GetJdkPath();
+			if (jdkPath && jdkPath[0])
+			{
+				strcpy_s(s_sJreJavaHome, MAX_PATH, jdkPath);
 			}
 		}
 	}

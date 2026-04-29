@@ -28,10 +28,68 @@ static void
 Usage( const char* arg0 )
 {
 	fprintf(stderr, "Usage:\n");
-	fprintf(stderr, "  %s {-a|--add} dest.car srcfile0 [srcfile1 ...]\n", arg0);
-	fprintf(stderr, "  %s {-f|--filelist} filelist dest.car\n", arg0);
+	fprintf(stderr, "  %s [--xor-key key|--xor-key-file path|--no-xor] {-a|--add} dest.car srcfile0 [srcfile1 ...]\n", arg0);
+	fprintf(stderr, "  %s [--xor-key key|--xor-key-file path|--no-xor] {-f|--filelist} filelist dest.car\n", arg0);
 	fprintf(stderr, "  %s {-x|--extract} src.car destdir\n", arg0);
 	fprintf(stderr, "  %s {-l|--list} src.car\n", arg0);
+}
+
+static char*
+ReadTextFile( const char *path )
+{
+	FILE *file = fopen( path, "rb" );
+	if ( ! file )
+	{
+		fprintf( stderr, "car: cannot open key file '%s'\n", path );
+		return NULL;
+	}
+
+	fseek( file, 0, SEEK_END );
+	long fileSize = ftell( file );
+	fseek( file, 0, SEEK_SET );
+
+	if ( fileSize < 0 )
+	{
+		fclose( file );
+		return NULL;
+	}
+
+	char *buffer = (char*)calloc( (size_t)fileSize + 1, sizeof( char ) );
+	if ( ! buffer )
+	{
+		fclose( file );
+		return NULL;
+	}
+
+	size_t bytesRead = fread( buffer, 1, (size_t)fileSize, file );
+	buffer[bytesRead] = '\0';
+	fclose( file );
+
+	while ( bytesRead > 0 && ( buffer[bytesRead - 1] == '\n' || buffer[bytesRead - 1] == '\r' ) )
+	{
+		buffer[--bytesRead] = '\0';
+	}
+
+	return buffer;
+}
+
+static void
+SerializeArchive(
+	const char *dstPath,
+	int numSrcPaths,
+	const char *srcPaths[],
+	bool hasArchiveOptions,
+	const char *xorKey,
+	bool useXor )
+{
+	if ( hasArchiveOptions )
+	{
+		Archive::Serialize( dstPath, numSrcPaths, srcPaths, xorKey, useXor );
+	}
+	else
+	{
+		Archive::Serialize( dstPath, numSrcPaths, srcPaths );
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -40,41 +98,88 @@ Rtt_EXPORT int
 Rtt_CarMain( int argc, const char *argv[] )
 {
 	int result = 0;
+	bool useXor = true;
+	bool hasArchiveOptions = false;
+	const char *xorKey = NULL;
+	char *xorKeyBuffer = NULL;
+	int argIndex = 1;
 
-	if ( argc < 3 )
+	while ( argIndex < argc )
+	{
+		if ( 0 == strcmp( argv[argIndex], "--xor-key" ) )
+		{
+			if ( argIndex + 1 >= argc )
+			{
+				Usage( argv[0] );
+				return -1;
+			}
+			xorKey = argv[argIndex + 1];
+			hasArchiveOptions = true;
+			argIndex += 2;
+		}
+		else if ( 0 == strcmp( argv[argIndex], "--xor-key-file" ) )
+		{
+			if ( argIndex + 1 >= argc )
+			{
+				Usage( argv[0] );
+				return -1;
+			}
+			free( xorKeyBuffer );
+			xorKeyBuffer = ReadTextFile( argv[argIndex + 1] );
+			if ( ! xorKeyBuffer )
+			{
+				return -1;
+			}
+			xorKey = xorKeyBuffer;
+			hasArchiveOptions = true;
+			argIndex += 2;
+		}
+		else if ( 0 == strcmp( argv[argIndex], "--no-xor" ) )
+		{
+			useXor = false;
+			hasArchiveOptions = true;
+			argIndex += 1;
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	if ( argc - argIndex < 2 )
 	{
 		Usage( argv[0] );
 		result = -1;
 	}
 	else
 	{
-		if (0 == strcmp(argv[1], "-x") || 0 == strcmp(argv[1], "--extract"))
+		if (0 == strcmp(argv[argIndex], "-x") || 0 == strcmp(argv[argIndex], "--extract"))
 		{
-			if ( argc < 4 )
+			if ( argc - argIndex < 3 )
 			{
 				Usage( argv[0] );
 				result = -1;
 			}
 			else
 			{
-				Archive::Deserialize( argv[3], argv[2] );
+				Archive::Deserialize( argv[argIndex + 2], argv[argIndex + 1] );
 			}
 		}
-		else if (0 == strcmp(argv[1], "-l") || 0 == strcmp(argv[1], "--list"))
+		else if (0 == strcmp(argv[argIndex], "-l") || 0 == strcmp(argv[argIndex], "--list"))
 		{
-			if (argc < 3)
+			if (argc - argIndex < 2)
 			{
 				Usage(argv[0]);
 				result = -1;
 			}
 			else
 			{
-				Archive::List(argv[2]);
+				Archive::List(argv[argIndex + 1]);
 			}
 		}
-		else if (0 == strcmp(argv[1], "-f") || 0 == strcmp(argv[1], "--filelist"))
+		else if (0 == strcmp(argv[argIndex], "-f") || 0 == strcmp(argv[argIndex], "--filelist"))
 		{
-			if ( argc != 4 )
+			if ( argc != argIndex + 3 )
 			{
 				Usage( argv[0] );
 				result = -1;
@@ -84,15 +189,15 @@ Rtt_CarMain( int argc, const char *argv[] )
 				FILE *inFile = NULL;
 				
 				// If the filename is "-" read file list from stdin
-				if ( 0 == strcmp( argv[2], "-" ) )
+				if ( 0 == strcmp( argv[argIndex + 1], "-" ) )
 				{
 					inFile = stdin;
 				}
 				else
 				{
-					if ((inFile = fopen(argv[2], "r")) == NULL)
+					if ((inFile = fopen(argv[argIndex + 1], "r")) == NULL)
 					{
-						fprintf(stderr, "%s: cannot open '%s' for reading\n", argv[0], argv[2]);
+						fprintf(stderr, "%s: cannot open '%s' for reading\n", argv[0], argv[argIndex + 1]);
 						
 						return -1;
 					}
@@ -150,7 +255,7 @@ Rtt_CarMain( int argc, const char *argv[] )
 				
 				fclose( inFile );
 				
-				Archive::Serialize( argv[3], numSrcPaths, srcPaths );
+				SerializeArchive( argv[argIndex + 2], numSrcPaths, srcPaths, hasArchiveOptions, xorKey, useXor );
 				
 				// Free the memory we allocated
 				for (int i = 0; i < numSrcPaths; i++)
@@ -162,18 +267,21 @@ Rtt_CarMain( int argc, const char *argv[] )
 		}
 		else
 		{
-			int argOffset = (0 == strcmp(argv[1], "-a") || 0 == strcmp(argv[1], "--add")) ? 1 : 0;
-			int numSrcPaths = argc - (2 + argOffset);
-			const char **srcPaths = argv + (2 + argOffset);
+			bool isAddMode = (0 == strcmp(argv[argIndex], "-a") || 0 == strcmp(argv[argIndex], "--add"));
+			int dstIndex = isAddMode ? argIndex + 1 : argIndex;
+			int srcIndex = isAddMode ? argIndex + 2 : argIndex + 1;
+			int numSrcPaths = argc - srcIndex;
+			const char **srcPaths = argv + srcIndex;
 			#if 0
 				for (int i = 0; i < argc; i++ )
 				{
 					printf( "argv[%d] = %s\n", i, argv[i] );
 				}
 			#endif
-			Archive::Serialize( argv[argOffset+1], numSrcPaths, srcPaths );
+			SerializeArchive( argv[dstIndex], numSrcPaths, srcPaths, hasArchiveOptions, xorKey, useXor );
 		}
 	}
 
+	free( xorKeyBuffer );
     return result;
 }

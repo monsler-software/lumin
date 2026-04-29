@@ -14,11 +14,14 @@
 #include "Core/Rtt_String.h"
 #include "Display/Rtt_BitmapMask.h"
 #include "Display/Rtt_BitmapPaint.h"
+#include "Display/Rtt_ClosedPath.h"
 #include "Display/Rtt_Display.h"
 #include "Display/Rtt_DisplayDefaults.h"
 #include "Display/Rtt_RectPath.h"
 #include "Display/Rtt_Shader.h"
 #include "Renderer/Rtt_Geometry_Renderer.h"
+#include "Renderer/Rtt_RenderData.h"
+#include "Renderer/Rtt_Renderer.h"
 #include "Renderer/Rtt_Uniform.h"
 #include "Rtt_GroupObject.h"
 #include "Rtt_LuaProxyVTable.h"
@@ -30,6 +33,8 @@
 #ifdef Rtt_WIN_PHONE_ENV
 #	include <vector>
 #endif
+
+#include <math.h>
 
 #ifdef Rtt_WIN_ENV
 #	undef CreateFont
@@ -52,6 +57,16 @@
 
 namespace Rtt
 {
+
+// ----------------------------------------------------------------------------
+
+namespace
+{
+	enum
+	{
+		kMaxTextStrokeWidth = 64
+	};
+}
 
 // ----------------------------------------------------------------------------
 
@@ -166,11 +181,20 @@ TextObject::TextObject( Display& display, const char text[], PlatformFont *font,
 	fScaledFont( NULL ),
 	fWidth( w ),
 	fHeight( h ),
+	fTextStrokeColor( 0 ),
+	fTextStrokeWidth( 0 ),
 	fAlignment( display.GetRuntime().GetAllocator() ),
 	fGeometry( NULL ),
 	fBaselineOffset( Rtt_REAL_0 ),
 	fMaskUniform( Rtt_NEW( display.GetAllocator(), Uniform( display.GetAllocator(), Uniform::kMat3 ) ) )
 {
+	ColorUnion strokeColor;
+	strokeColor.rgba.r = 0;
+	strokeColor.rgba.g = 0;
+	strokeColor.rgba.b = 0;
+	strokeColor.rgba.a = 255;
+	fTextStrokeColor = strokeColor.pixel;
+
 	if ( ! fOriginalFont )
 	{
 		const MPlatform& platform = display.GetRuntime().Platform();
@@ -194,6 +218,8 @@ TextObject::TextObject( Display& display, const char text[], PlatformFont *font,
 
 TextObject::~TextObject()
 {
+	ReleaseTextStrokeResources();
+
 	Rtt_DELETE( fOriginalFont );
 	Rtt_DELETE( fScaledFont );
 
@@ -330,6 +356,8 @@ TextObject::UpdateScaledFont()
 void
 TextObject::Reset()
 {
+	ReleaseTextStrokeResources();
+
 	SetMask( NULL, NULL );
 
 	Rtt_DELETE( fScaledFont );
@@ -337,6 +365,100 @@ TextObject::Reset()
 	
 	Invalidate( kGeometryFlag | kStageBoundsFlag | kMaskFlag );
 	GetPath().Invalidate( ClosedPath::kFillSource | ClosedPath::kStrokeSource );
+}
+
+bool
+TextObject::IsTextStrokeVisible() const
+{
+	if ( 0 == fTextStrokeWidth )
+	{
+		return false;
+	}
+
+	ColorUnion c;
+	c.pixel = fTextStrokeColor;
+	return c.rgba.a > 0;
+}
+
+void
+TextObject::ReleaseTextStrokeResources()
+{
+	for ( std::vector< Geometry* >::const_iterator iter = fStrokeGeometries.begin(); iter != fStrokeGeometries.end(); ++iter )
+	{
+		QueueRelease( *iter );
+	}
+	fStrokeGeometries.clear();
+
+	for ( std::vector< Uniform* >::const_iterator iter = fStrokeMaskUniforms.begin(); iter != fStrokeMaskUniforms.end(); ++iter )
+	{
+		QueueRelease( *iter );
+	}
+	fStrokeMaskUniforms.clear();
+}
+
+void
+TextObject::UpdateTextStrokeResources( const Display& display, const Geometry *baseGeometry, const Matrix& baseMatrix )
+{
+	ReleaseTextStrokeResources();
+
+	if ( ! IsTextStrokeVisible() || ! baseGeometry || ! GetMask() )
+	{
+		return;
+	}
+
+	ColorUnion strokeColor;
+	strokeColor.pixel = fTextStrokeColor;
+	strokeColor.rgba.a = (U8)( (unsigned)strokeColor.rgba.a * AlphaCumulative() / 255u );
+	strokeColor.rgba.PremultiplyAlpha();
+	if ( 0 == strokeColor.rgba.a )
+	{
+		return;
+	}
+
+	const int radius = fTextStrokeWidth;
+	const float radiusLimit = ( (float)radius + 0.5f ) * ( (float)radius + 0.5f );
+	const Real pixelX = display.GetSx();
+	const Real pixelY = display.GetSy();
+
+	for ( int dy = -radius; dy <= radius; dy++ )
+	{
+		for ( int dx = -radius; dx <= radius; dx++ )
+		{
+			if ( 0 == dx && 0 == dy )
+			{
+				continue;
+			}
+
+			float distanceSq = (float)( dx * dx + dy * dy );
+			if ( distanceSq > radiusLimit )
+			{
+				continue;
+			}
+
+			Real offsetX = Rtt_RealMul( Rtt_IntToReal( dx ), pixelX );
+			Real offsetY = Rtt_RealMul( Rtt_IntToReal( dy ), pixelY );
+
+			Geometry *geometry = Rtt_NEW( display.GetAllocator(), Geometry( *baseGeometry ) );
+			for ( int index = (int)geometry->GetVerticesUsed() - 1; index >= 0; index-- )
+			{
+				Geometry::Vertex *vertexPointer = &(geometry->GetVertexData()[index]);
+				vertexPointer->x += offsetX;
+				vertexPointer->y += offsetY;
+				vertexPointer->rs = strokeColor.rgba.r;
+				vertexPointer->gs = strokeColor.rgba.g;
+				vertexPointer->bs = strokeColor.rgba.b;
+				vertexPointer->as = strokeColor.rgba.a;
+			}
+
+			Uniform *maskUniform = Rtt_NEW( display.GetAllocator(), Uniform( display.GetAllocator(), Uniform::kMat3 ) );
+			Matrix translationMatrix( baseMatrix );
+			translationMatrix.Translate( offsetX, offsetY );
+			UpdateMaskUniform( *maskUniform, translationMatrix, *GetMask() );
+
+			fStrokeGeometries.push_back( geometry );
+			fStrokeMaskUniforms.push_back( maskUniform );
+		}
+	}
 }
 
 bool
@@ -373,6 +495,15 @@ TextObject::GetSelfBounds( Rect& rect ) const
 		// NOTE: we do not use fWidth/fHeight b/c that's only used for multiline text
 		// The final bounds might be slightly larger for byte alignment/pixel row stride issues
 		Super::GetSelfBounds( rect );
+		if ( IsTextStrokeVisible() && rect.NotEmpty() )
+		{
+			const Real strokeX = Rtt_RealMul( Rtt_IntToReal( fTextStrokeWidth ), fDisplay.GetSx() );
+			const Real strokeY = Rtt_RealMul( Rtt_IntToReal( fTextStrokeWidth ), fDisplay.GetSy() );
+			rect.xMin -= strokeX;
+			rect.xMax += strokeX;
+			rect.yMin -= strokeY;
+			rect.yMax += strokeY;
+		}
 	}
 	else
 	{
@@ -383,6 +514,11 @@ TextObject::GetSelfBounds( Rect& rect ) const
 void
 TextObject::Prepare( const Display& display )
 {
+	const DirtyFlags dirtyFlags = GetDirtyFlags();
+	const bool shouldUpdateTextStrokeResources =
+		( 0 != ( dirtyFlags & ( kGeometryFlag | kColorFlag | kTransformFlag | kMaskFlag | kPaintFlag | kProgramFlag ) ) )
+		|| ( IsTextStrokeVisible() != ( ! fStrokeGeometries.empty() ) );
+
 #ifdef Rtt_RENDER_TEXT_TO_NEAREST_PIXEL
 	Real offsetX = Rtt_REAL_0;
 	Real offsetY = Rtt_REAL_0;
@@ -447,27 +583,57 @@ TextObject::Prepare( const Display& display )
 			vertexPointer->y += offsetY;
 		}
 	}
+
+	if ( shouldUpdateTextStrokeResources )
+	{
+		UpdateTextStrokeResources( display, fGeometry, translationMatrix );
+	}
 #else
 	Super::Prepare( display );
+	if ( IsInitialized() && shouldUpdateTextStrokeResources )
+	{
+		UpdateTextStrokeResources( display, GetFillData().fGeometry, GetSrcToDstMatrix() );
+	}
 #endif
 }
 
 void
 TextObject::Draw( Renderer& renderer ) const
 {
-#ifdef Rtt_RENDER_TEXT_TO_NEAREST_PIXEL
 	if ( ShouldDraw() )
 	{
 		SUMMED_TIMING( td, "Text: Draw" );
 
-		RenderData fillData = GetFillData();
-		fillData.fGeometry = fGeometry;
-		fillData.fMaskUniform = fMaskUniform;
-		GetFillShader()->Draw( renderer, fillData );
-	}
-#else
-	Super::Draw( renderer );
+		ClosedPath& path = const_cast< TextObject* >( this )->GetPath();
+		path.UpdateResources( renderer );
+
+		const Shader *fillShader = GetFillShader();
+		if ( ! fillShader )
+		{
+			return;
+		}
+
+		if ( IsTextStrokeVisible() && ! fStrokeGeometries.empty() )
+		{
+			RenderData strokeData = GetFillData();
+			for ( size_t i = 0, iMax = fStrokeGeometries.size(); i < iMax; i++ )
+			{
+				strokeData.fGeometry = fStrokeGeometries[i];
+				strokeData.fMaskUniform = fStrokeMaskUniforms[i];
+				fillShader->Draw( renderer, strokeData );
+			}
+		}
+
+		if ( path.IsFillVisible() )
+		{
+			RenderData fillData = GetFillData();
+#ifdef Rtt_RENDER_TEXT_TO_NEAREST_PIXEL
+			fillData.fGeometry = fGeometry;
+			fillData.fMaskUniform = fMaskUniform;
 #endif
+			fillShader->Draw( renderer, fillData );
+		}
+	}
 }
 
 const LuaProxyVTable&
@@ -521,6 +687,31 @@ TextObject::SetSize( Real newValue )
 			fOriginalFont->SetSize( newValue );
 			Reset();
 		}
+	}
+}
+
+void
+TextObject::SetTextStrokeColor( Color newValue )
+{
+	if ( fTextStrokeColor != newValue )
+	{
+		fTextStrokeColor = newValue;
+		Invalidate( kColorFlag );
+	}
+}
+
+void
+TextObject::SetTextStrokeWidth( U8 newValue )
+{
+	if ( newValue > kMaxTextStrokeWidth )
+	{
+		newValue = kMaxTextStrokeWidth;
+	}
+
+	if ( fTextStrokeWidth != newValue )
+	{
+		fTextStrokeWidth = newValue;
+		Invalidate( kGeometryFlag | kStageBoundsFlag | kColorFlag );
 	}
 }
 

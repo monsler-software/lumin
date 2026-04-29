@@ -52,7 +52,7 @@ class GradientPaint : public BitmapPaint
 			Rtt_Real angle );
 
 	public:
-		GradientPaint( const SharedPtr< TextureResource >& resource, Rtt_Real angle );
+		GradientPaint( const SharedPtr< TextureResource >& resource, Color start, Color end, Rtt_Real angle );
 
 	public:
 		virtual const Paint* AsPaint( Super::Type type ) const;
@@ -63,6 +63,10 @@ class GradientPaint : public BitmapPaint
 		Color GetEnd() const;
 		void SetStart( Color color );
 		void SetEnd( Color color );
+
+	private:
+		Color fStart;
+		Color fEnd;
 };
 
 // ----------------------------------------------------------------------------

@@ -58,6 +58,7 @@ class Archive
 
 	public:
 		static void Serialize( const char *dstPath, int numSrcPaths, const char *srcPaths[] );
+		static void Serialize( const char *dstPath, int numSrcPaths, const char *srcPaths[], const char *xorKey, bool useXor );
 		static size_t Deserialize( const char *dstDir, const char *srcCarFile );
 		static void List(const char *srcCarFile);
 
@@ -80,6 +81,10 @@ class Archive
 		size_t fNumEntries;
 		const void* fData;
 		size_t fDataLen;
+		char* fPath;
+		U8 fVersion;
+		U32 fFlags;
+		U32 fXorSeed;
 #if defined( Rtt_ARCHIVE_COPY_DATA )
 		Data<char> fBits;
 #endif

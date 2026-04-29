@@ -55,8 +55,36 @@ val nativeDir = if (windows) {
     resourceDir ?: "${System.getenv("HOME")}/Library/Application Support/Corona/Native/"
 }
 
+fun existingPath(vararg candidates: String?): String? =
+        candidates.filterNotNull()
+                .map { it.replace("\\", "/") }
+                .firstOrNull { file(it).exists() }
+
+fun preferredPath(vararg candidates: String?): String =
+        existingPath(*candidates) ?: candidates.filterNotNull().first().replace("\\", "/")
+
+val coronaBinDir = coronaResourcesDir?.let { file("$it/..").absolutePath.replace("\\", "/") }
+val nativeBinDir = "$nativeDir/Corona/$shortOsName/bin"
+val luaBinDir = if (windows) {
+    preferredPath(
+            "$nativeDir/Corona/win/bin",
+            coronaResourcesDir?.let { file("$it/../../Lua").absolutePath },
+            System.getenv("CORONA_PATH")?.let { "$it/Lua" }
+    )
+} else {
+    nativeBinDir
+}
+
 val coronaPlugins = file("$buildDirectory/corona-plugins")
-val luaCmd = "$nativeDir/Corona/$shortOsName/bin/lua"
+val sharedLuaPackagePath = listOfNotNull(
+        "$nativeDir/Corona/shared/resource/?.lua",
+        coronaResourcesDir?.let { "${it.replace("\\", "/")}/?.lua" }
+).joinToString(";")
+val luaCmd = if (windows) {
+    preferredPath("$luaBinDir/lua.exe", "$luaBinDir/lua")
+} else {
+    "$luaBinDir/lua"
+}
 val isSimulatorBuild = coronaTmpDir != null
 
 fun checkCoronaNativeInstallation() {
@@ -108,7 +136,7 @@ val parsedBuildProperties: JsonObject = run {
         setWorkingDir("$nativeDir/Corona/$shortOsName/bin")
         commandLine(luaCmd,
                 "-e",
-                "package.path='$nativeDir/Corona/shared/resource/?.lua;'..package.path",
+                "package.path='$sharedLuaPackagePath;'..package.path",
                 "-e",
                 """
                         dofile('${buildSettingsFile.path.replace("\\", "\\\\")}')
@@ -133,12 +161,31 @@ val parsedBuildProperties: JsonObject = run {
 extra["minSdkVersion"] = parsedBuildProperties.lookup<Any?>("buildSettings.android.minSdkVersion").firstOrNull()?.toString()?.toIntOrNull()
         ?: 15
 
+val windowsCoronaBuilderCandidates = listOfNotNull(
+        "$nativeDir/Corona/win/bin/Lumin.Builder.exe",
+        "$nativeDir/Corona/win/bin/CoronaBuilder.exe",
+        coronaBinDir?.let { "$it/Lumin.Builder.exe" },
+        coronaBinDir?.let { "$it/CoronaBuilder.exe" },
+        System.getenv("CORONA_PATH")?.let { "$it/Lumin.Builder.exe" },
+        System.getenv("CORONA_PATH")?.let { "$it/CoronaBuilder.exe" }
+)
+
 val coronaBuilder = if (windows) {
-    "$nativeDir/Corona/win/bin/CoronaBuilder.exe"
+    preferredPath(*windowsCoronaBuilderCandidates.toTypedArray())
 } else if (linux) {
     "$coronaResourcesDir/../Solar2DBuilder"
 } else {
     "$nativeDir/Corona/$shortOsName/bin/CoronaBuilder.app/Contents/MacOS/CoronaBuilder"
+}
+
+fun requireCoronaBuilder() {
+    if (!windows || file(coronaBuilder).exists()) {
+        return
+    }
+    throw InvalidUserDataException(
+            "Lumin Builder/CoronaBuilder executable was not found. Checked:\n" +
+                    windowsCoronaBuilderCandidates.joinToString("\n") { "  - ${it.replace("\\", "/")}" }
+    )
 }
 
 val coronaVersionName =
@@ -394,7 +441,11 @@ android.applicationVariants.all {
 
     val compileLuaTask = tasks.create("compileLua$baseNameCapitalized") {
         description = "If required, compiles Lua and archives it into resource.car"
-        val luac = "$nativeDir/Corona/$shortOsName/bin/luac"
+        val luac = if (windows) {
+            preferredPath("$luaBinDir/luac.exe", "$luaBinDir/luac")
+        } else {
+            "$luaBinDir/luac"
+        }
 
         val srcLuaFiles = fileTree(coronaSrcDir) {
             include("**/*.lua")
@@ -483,6 +534,7 @@ android.applicationVariants.all {
             // Make sure it's not appended to an old file
             delete(compiledLuaArchive)
             mkdir(file(compiledLuaArchive).parent)
+            requireCoronaBuilder()
             exec {
                 workingDir = file(compiledDir)
                 standardInput = StringInputStream(toArchive.joinToString("\n"))
@@ -563,6 +615,7 @@ fun downloadAndProcessCoronaPlugins(reDownloadPlugins: Boolean = true) {
         builderInput.parentFile.mkdirs()
         builderInput.writeText(buildParams)
         val builderOutput = ByteArrayOutputStream()
+        requireCoronaBuilder()
         val execResult = exec {
             commandLine(coronaBuilder, "plugins", "download", "--android-offline-plugins", "builderInput=${builderInput.absolutePath}")
             standardOutput = builderOutput
@@ -666,7 +719,7 @@ fun downloadAndProcessCoronaPlugins(reDownloadPlugins: Boolean = true) {
         exec {
             commandLine(luaCmd
                     , "-e"
-                    , "package.path='$nativeDir/Corona/shared/resource/?.lua;'..package.path"
+                    , "package.path='$sharedLuaPackagePath;'..package.path"
                     , *luaVerbosityPlug
                     , "$buildToolsDir/convert_metadata.lua"
                     , "$buildDirectory/intermediates/plugins_metadata.json"
@@ -692,7 +745,7 @@ fun downloadAndProcessCoronaPlugins(reDownloadPlugins: Boolean = true) {
         exec {
             commandLine(luaCmd
                     , "-e"
-                    , "package.path='$nativeDir/Corona/shared/resource/?.lua;'..package.path"
+                    , "package.path='$sharedLuaPackagePath;'..package.path"
                     , *luaVerbosityPlug
                     , "$buildToolsDir/update_manifest.lua"
                     , /*1*/ "$buildToolsDir/AndroidManifest.template.xml"
@@ -874,10 +927,20 @@ tasks.register<Copy>("installAppTemplateToSim") {
     into("$coronaNativeOutputDir/android/resource")
 }
 
+tasks.register<Copy>("installSharedResourcesToSim") {
+    if (coronaBuiltFromSource) group = "Corona-dev"
+    enabled = coronaBuiltFromSource
+    from("$rootDir/../../platform/resources") {
+        include("*.lua")
+    }
+    into("$coronaNativeOutputDir/shared/resource")
+}
+
 tasks.register<Copy>("installAppTemplateAndAARToSim") {
     if (coronaBuiltFromSource) group = "Corona-dev"
     enabled = coronaBuiltFromSource
     dependsOn("installAppTemplateToSim")
+    dependsOn("installSharedResourcesToSim")
     dependsOn(":Corona:assembleRelease")
     from("${findProject(":Corona")?.layout?.buildDirectory?.asFile?.get()}/outputs/aar/") {
         include("Corona-release.aar")

@@ -303,6 +303,7 @@ class LuaTextObjectProxyVTable : public LuaShapeObjectProxyVTable
 
 	public:
 		static const Self& Constant();
+		static int setStrokeColor( lua_State *L );
 
 	protected:
 		LuaTextObjectProxyVTable() {}

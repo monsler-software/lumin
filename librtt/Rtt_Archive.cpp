@@ -24,6 +24,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
+#include <time.h>
+#include <string>
+#include <vector>
 
 #if defined( Rtt_WIN_ENV ) || defined( Rtt_POWERVR_ENV ) // || defined( Rtt_NXS_ENV )
 	#include <io.h>
@@ -51,23 +54,156 @@ namespace Rtt
 
 // ----------------------------------------------------------------------------
 
+enum
+{
+	kArchiveVersion1 = 0x1,
+	kArchiveVersion2 = 0x2,
+	kArchiveDefaultVersion = kArchiveVersion2,
+	kArchiveFlagXorData = 0x1
+};
+
+static const U32 kArchiveSeedMask = 0x4C554D49; // "LUMI"
+
+static U32
+ArchiveMix32( U32 value )
+{
+	value ^= value >> 16;
+	value *= 0x7feb352d;
+	value ^= value >> 15;
+	value *= 0x846ca68b;
+	value ^= value >> 16;
+	return value;
+}
+
+static U32
+ArchiveHashString( U32 seed, const char *value )
+{
+	if ( ! value )
+	{
+		return ArchiveMix32( seed ^ 0x9e3779b9 );
+	}
+
+	U32 hash = seed ? seed : 2166136261u;
+	while ( *value )
+	{
+		hash ^= (U8)*value++;
+		hash *= 16777619u;
+	}
+	return ArchiveMix32( hash );
+}
+
+static U32
+ArchiveEncodeSeed( U32 seed )
+{
+	return ( ( seed << 7 ) | ( seed >> 25 ) ) ^ kArchiveSeedMask ^ 0xA341316Cu;
+}
+
+static U32
+ArchiveDecodeSeed( U32 encodedSeed )
+{
+	// This is intentionally not cryptographic. It keeps the seed out of plain
+	// text while preserving a compact self-contained archive format.
+	U32 value = encodedSeed ^ kArchiveSeedMask ^ 0xA341316Cu;
+	return ( value >> 7 ) | ( value << 25 );
+}
+
+static U8
+ArchiveXorByte( U32 seed, U32 absoluteOffset )
+{
+	U32 value = seed ^ ( absoluteOffset * 0x9e3779b9u ) ^ 0xC2B2AE35u;
+	value = ArchiveMix32( value );
+	return (U8)( value ^ ( value >> 8 ) ^ ( value >> 16 ) ^ ( value >> 24 ) );
+}
+
+static void
+ArchiveXorTransform( void *data, size_t len, U32 seed, U32 absoluteOffset )
+{
+	U8 *bytes = (U8*)data;
+	for ( size_t i = 0; i < len; i++ )
+	{
+		bytes[i] ^= ArchiveXorByte( seed, absoluteOffset + (U32)i );
+	}
+}
+
 static bool
-CopyFile( FILE *src, FILE *dst, long *numBytes )
+IsTruthyEnvironmentValue( const char *value )
+{
+	return value && ( 0 == strcmp( value, "1" )
+		|| 0 == Rtt_StringCompareNoCase( value, "true" )
+		|| 0 == Rtt_StringCompareNoCase( value, "yes" )
+		|| 0 == Rtt_StringCompareNoCase( value, "on" ) );
+}
+
+static const char*
+GetArchiveXorKeyFromEnvironment()
+{
+	const char *key = getenv( "LUMIN_CAR_XOR_KEY" );
+	if ( ! key || '\0' == key[0] )
+	{
+		key = getenv( "CORONA_CAR_XOR_KEY" );
+	}
+	return key;
+}
+
+static bool
+IsArchiveXorDisabledByEnvironment()
+{
+	return IsTruthyEnvironmentValue( getenv( "LUMIN_CAR_NO_XOR" ) )
+		|| IsTruthyEnvironmentValue( getenv( "CORONA_CAR_NO_XOR" ) );
+}
+
+static U32
+CreateArchiveXorSeed(
+	const char *dstPath,
+	const char *xorKey,
+	const std::vector<std::string>& fileList )
+{
+	U32 seed = ArchiveHashString( 0xC0DEC0DEu, xorKey && xorKey[0] ? xorKey : "lumin-resource-car-v2" );
+	seed = ArchiveHashString( seed, dstPath );
+
+	for ( std::vector<std::string>::const_iterator it = fileList.begin(); it != fileList.end(); ++it )
+	{
+		seed = ArchiveHashString( seed, it->c_str() );
+	}
+
+	if ( ! xorKey || '\0' == xorKey[0] )
+	{
+		seed ^= (U32)time( NULL );
+	}
+
+	seed = ArchiveMix32( seed );
+	return seed ? seed : 0x13579BDFu;
+}
+
+static bool
+CopyFile( FILE *src, FILE *dst, long *numBytes, U32 xorSeed, U32 absoluteOffset )
 {
 	bool result = true;
 	Rtt_ASSERT( src && dst );
 
 	long startPos = ftell( dst );
 
-	int c;
-	while( (c = getc( src )) != EOF )
+	char buffer[4096];
+	size_t totalBytesRead = 0;
+	size_t objectsRead = 0;
+	while ( ( objectsRead = fread( buffer, sizeof( buffer[0] ), sizeof( buffer ), src ) ) > 0 )
 	{
-		if ( ! Rtt_VERIFY( EOF != putc( c, dst ) ) )
+		if ( xorSeed )
+		{
+			ArchiveXorTransform( buffer, objectsRead, xorSeed, absoluteOffset + (U32)totalBytesRead );
+		}
+		if ( fwrite( buffer, sizeof( buffer[0] ), objectsRead, dst ) < objectsRead )
 		{
 			Rtt_TRACE( ( "ERROR: Copy could not be copied!\n" ) );
 			result = false;
 			goto exit_gracefully;
 		}
+		totalBytesRead += objectsRead;
+	}
+
+	if ( ferror( src ) )
+	{
+		result = false;
 	}
 
 /*
@@ -109,6 +245,12 @@ exit_gracefully:
 		*numBytes = ftell( dst ) - startPos;
 	}
 	return result;
+}
+
+static bool
+CopyFile( FILE *src, FILE *dst, long *numBytes )
+{
+	return CopyFile( src, dst, numBytes, 0, 0 );
 }
 
 template < size_t N >
@@ -232,7 +374,7 @@ class ArchiveWriter
 		enum
 		{
 			kTagSize = sizeof(U32)*2,
-			kVersion = 0x1
+			kVersion = kArchiveDefaultVersion
 		};
 
 	public:
@@ -240,7 +382,7 @@ class ArchiveWriter
 		~ArchiveWriter();
 
 	public:
-		int Initialize( const char *dstPath );
+		int Initialize( const char *dstPath, U8 version, U32 flags, U32 xorSeed );
 
 	public:
 		int Serialize( Archive::Tag tag, U32 len ) const;
@@ -253,15 +395,23 @@ class ArchiveWriter
 
 	public:
 		S32 GetPosition() const;
+		bool IsXorEnabled() const { return kArchiveVersion2 == fVersion && ( fFlags & kArchiveFlagXorData ); }
+		U32 GetXorSeed() const { return fXorSeed; }
 
 	private:
 		FILE *fDst;
+		U8 fVersion;
+		U32 fFlags;
+		U32 fXorSeed;
 };
 
 // ----------------------------------------------------------------------------
 
 ArchiveWriter::ArchiveWriter()
-:	fDst( NULL )
+:	fDst( NULL ),
+	fVersion( kArchiveDefaultVersion ),
+	fFlags( 0 ),
+	fXorSeed( 0 )
 {
 }
 
@@ -274,7 +424,7 @@ ArchiveWriter::~ArchiveWriter()
 }
 
 int
-ArchiveWriter::Initialize( const char *dstPath )
+ArchiveWriter::Initialize( const char *dstPath, U8 version, U32 flags, U32 xorSeed )
 {
 	int result = 0;
 
@@ -286,11 +436,20 @@ ArchiveWriter::Initialize( const char *dstPath )
 	}
 	else
 	{
+		fVersion = version;
+		fFlags = ( kArchiveVersion2 == fVersion ? flags : 0 );
+		fXorSeed = ( fFlags & kArchiveFlagXorData ? xorSeed : 0 );
+
 		FILE *dst = fDst;
 		result += fprintf( dst, "%c", 'r');
 		result += fprintf( dst, "%c", 'a');
 		result += fprintf( dst, "%c", 'c');
-		result += fprintf( dst, "%c", kVersion );
+		result += fprintf( dst, "%c", fVersion );
+		if ( kArchiveVersion2 == fVersion )
+		{
+			result += Serialize( fFlags );
+			result += Serialize( ArchiveEncodeSeed( fXorSeed ) );
+		}
 	}
 
 	return result;
@@ -366,7 +525,8 @@ ArchiveWriter::Serialize( const char *filepath ) const
 
 		FILE *dst = fDst;
 		long numBytes = 0;
-		if ( Rtt_VERIFY( CopyFile( src, dst, & numBytes ) ) )
+		U32 payloadOffset = (U32)ftell( dst );
+		if ( Rtt_VERIFY( CopyFile( src, dst, & numBytes, GetXorSeed(), payloadOffset ) ) )
 		{
 			Rtt_ASSERT( numBytes >= 0 && (size_t)numBytes == len );
 
@@ -429,6 +589,12 @@ class ArchiveReader
 
 	public:
 		bool Seek( S32 offset, bool fromOrigin );
+		S32 Tell() const;
+		U32 OffsetOf( const void *data ) const;
+		U8 GetVersion() const { return fVersion; }
+		U32 GetFlags() const { return fFlags; }
+		U32 GetXorSeed() const { return fXorSeed; }
+		bool IsXorEnabled() const { return kArchiveVersion2 == fVersion && ( fFlags & kArchiveFlagXorData ); }
 
 	protected:
 		void VerifyBounds() const;
@@ -438,32 +604,64 @@ class ArchiveReader
 		const void *fData;
 		size_t fDataLen;
 		U8 fVersion;
+		U32 fFlags;
+		U32 fXorSeed;
 };
 
 ArchiveReader::ArchiveReader()
 :	fPos( NULL ),
 	fData( NULL ),
 	fDataLen( 0 ),
-	fVersion( 0 )
+	fVersion( 0 ),
+	fFlags( 0 ),
+	fXorSeed( 0 )
 {
 }
 
 bool
 ArchiveReader::Initialize( const void* data, size_t numBytes )
 {
-	const U8 kHeader[] = { 'r', 'a', 'c', ArchiveWriter::kVersion };
-	const size_t kHeaderSize = sizeof( kHeader );
-	bool result = ( data && numBytes > kHeaderSize && 0 == memcmp( data, kHeader, kHeaderSize ) );
+	const U8 *bytes = (const U8*)data;
+	const size_t kBaseHeaderSize = 4;
+	bool result = ( data && numBytes > kBaseHeaderSize
+		&& bytes[0] == 'r'
+		&& bytes[1] == 'a'
+		&& bytes[2] == 'c'
+		&& ( bytes[3] == kArchiveVersion1 || bytes[3] == kArchiveVersion2 ) );
 	if ( result )
 	{
-		fPos = ((U8*)data) + kHeaderSize;
+		fVersion = bytes[3];
+		size_t headerSize = kBaseHeaderSize;
+		fFlags = 0;
+		fXorSeed = 0;
+		if ( kArchiveVersion2 == fVersion )
+		{
+			headerSize += sizeof( U32 ) * 2;
+			result = ( numBytes > headerSize );
+			if ( ! result )
+			{
+				return false;
+			}
+
+			U32 flags = ((U32)bytes[4])
+					| (((U32)bytes[5]) << 8)
+					| (((U32)bytes[6]) << 16)
+					| (((U32)bytes[7]) << 24);
+			U32 encodedSeed = ((U32)bytes[8])
+					| (((U32)bytes[9]) << 8)
+					| (((U32)bytes[10]) << 16)
+					| (((U32)bytes[11]) << 24);
+			fFlags = flags;
+			fXorSeed = ArchiveDecodeSeed( encodedSeed );
+		}
+
+		fPos = ((U8*)data) + headerSize;
 		fData = data;
 		fDataLen = numBytes;
-		fVersion = ArchiveWriter::kVersion;
 
 #if Rtt_DEBUG_ARCHIVE
 		Rtt_TRACE( ( "[ArchiveReader::Initialize] inData(%p) fPos(%p) fData(%p) headerSize(%ld) fDataLen(%ld)\n",
-			data, fPos, fData, kHeaderSize, fDataLen ) );
+			data, fPos, fData, headerSize, fDataLen ) );
 #endif
 	}
 #if Rtt_DEBUG_ARCHIVE
@@ -585,6 +783,21 @@ ArchiveReader::Seek( S32 offset, bool fromOrigin )
 	return result;
 }
 
+S32
+ArchiveReader::Tell() const
+{
+	VerifyBounds();
+	return (S32)( (const U8*)fPos - (const U8*)fData );
+}
+
+U32
+ArchiveReader::OffsetOf( const void *data ) const
+{
+	const U8 *p = (const U8*)data;
+	Rtt_ASSERT( p >= (const U8*)fData && p <= (((U8*)fData) + fDataLen ) );
+	return (U32)( (const U8*)data - (const U8*)fData );
+}
+
 void
 ArchiveReader::VerifyBounds() const
 {
@@ -596,6 +809,17 @@ ArchiveReader::VerifyBounds() const
 
 void
 Archive::Serialize( const char *dstPath, int numSrcPaths, const char *srcPaths[] )
+{
+	Serialize(
+		dstPath,
+		numSrcPaths,
+		srcPaths,
+		GetArchiveXorKeyFromEnvironment(),
+		! IsArchiveXorDisabledByEnvironment() );
+}
+
+void
+Archive::Serialize( const char *dstPath, int numSrcPaths, const char *srcPaths[], const char *xorKey, bool useXor )
 {
 	std::vector<std::string> fileList;
 	size_t fileCount = 0;
@@ -664,7 +888,10 @@ Archive::Serialize( const char *dstPath, int numSrcPaths, const char *srcPaths[]
 	}
 
 	ArchiveWriter writer;
-	int startPos = writer.Initialize( dstPath );
+	U8 archiveVersion = useXor ? kArchiveVersion2 : kArchiveVersion1;
+	U32 archiveFlags = useXor ? kArchiveFlagXorData : 0;
+	U32 xorSeed = useXor ? CreateArchiveXorSeed( dstPath, xorKey, fileList ) : 0;
+	int startPos = writer.Initialize( dstPath, archiveVersion, archiveFlags, xorSeed );
 	if ( Rtt_VERIFY( startPos > 0 ) )
 	{
 		ArchiveWriterEntry* entries = new ArchiveWriterEntry[fileCount];
@@ -768,6 +995,12 @@ WriteFile( const char *dstDir, const char *filename, const void *src, size_t src
 	}
 	else
 	{
+		if ( 0 == srcNumBytes )
+		{
+			Rtt_FileDescriptorClose( fd );
+			return;
+		}
+
 		// Set size of file
 		_lseek( fd, srcNumBytes - 1, SEEK_SET );
 		_write( fd, "", 1 );
@@ -835,7 +1068,7 @@ Archive::Deserialize( const char *dstDir, const char *srcCarFile )
 				case kContentsTag:
 					{
 						U32 numElements = reader.ParseU32();
-						ArchiveEntry *entries = (ArchiveEntry*)Rtt_MALLOC( & allocator, sizeof( ArchiveEntry )*numElements );
+						ArchiveEntry *entries = new ArchiveEntry[numElements];
 						for ( U32 i = 0; i < numElements; i++ )
 						{
 							ArchiveEntry& entry = entries[i];
@@ -855,12 +1088,26 @@ Archive::Deserialize( const char *dstDir, const char *srcCarFile )
 							{
 								U32 resourceLen = 0;
 								void* resource = reader.ParseData( resourceLen );
-								WriteFile( dstDir, entry.name, resource, resourceLen );
+								char *decodedResource = NULL;
+								const void *resourceToWrite = resource;
+								if ( reader.IsXorEnabled() )
+								{
+									decodedResource = new char[resourceLen];
+									memcpy( decodedResource, resource, resourceLen );
+									ArchiveXorTransform(
+										decodedResource,
+										resourceLen,
+										reader.GetXorSeed(),
+										reader.OffsetOf( resource ) );
+									resourceToWrite = decodedResource;
+								}
+								WriteFile( dstDir, entry.name, resourceToWrite, resourceLen );
+								delete [] decodedResource;
 								++count;
 							}
 						}
 
-						Rtt_FREE( entries );
+						delete [] entries;
 					}
 					break;
 				default:
@@ -920,7 +1167,7 @@ Archive::List(const char *srcCarFile)
 			case kContentsTag:
 			{
 				U32 numElements = reader.ParseU32();
-				ArchiveEntry *entries = (ArchiveEntry*)Rtt_MALLOC( & allocator, sizeof( ArchiveEntry )*numElements );
+				ArchiveEntry *entries = new ArchiveEntry[numElements];
 				for ( U32 i = 0; i < numElements; i++ )
 				{
 					ArchiveEntry& entry = entries[i];
@@ -944,7 +1191,7 @@ Archive::List(const char *srcCarFile)
 					}
 				}
 
-				Rtt_FREE( entries );
+				delete [] entries;
 			}
 			break;
 			default:
@@ -970,11 +1217,26 @@ Archive::Archive( Rtt_Allocator& allocator, const char *srcPath )
 :	fAllocator( allocator ),
 	fEntries( NULL ),
 	fNumEntries( 0 ),
+	fData( NULL ),
+	fDataLen( 0 ),
+	fPath( NULL ),
+	fVersion( 0 ),
+	fFlags( 0 ),
+	fXorSeed( 0 )
 #if defined( Rtt_ARCHIVE_COPY_DATA )
-	fBits( &allocator ),
+	, fBits( &allocator )
 #endif
-	fData( NULL )
 {
+	if ( srcPath )
+	{
+		size_t pathLen = strlen( srcPath ) + 1;
+		fPath = (char*)Rtt_MALLOC( & allocator, pathLen );
+		if ( fPath )
+		{
+			memcpy( fPath, srcPath, pathLen );
+		}
+	}
+
 #if defined( Rtt_WIN_PHONE_ENV ) || defined(Rtt_NXS_ENV)
 	FILE* filePointer = Rtt_FileOpen(srcPath, "rb");
 	if (filePointer)
@@ -1060,6 +1322,10 @@ Archive::Archive( Rtt_Allocator& allocator, const char *srcPath )
 	ArchiveReader reader;
 	if ( Rtt_VERIFY( reader.Initialize( fData, fDataLen ) ) )
 	{
+		fVersion = reader.GetVersion();
+		fFlags = reader.GetFlags();
+		fXorSeed = reader.GetXorSeed();
+
 		U32 tag = kUnknownTag;
 		//while( kEOFTag != tag )
 		{
@@ -1113,6 +1379,7 @@ Archive::~Archive()
 #endif
 
 	Rtt_FREE( fEntries );
+	Rtt_FREE( fPath );
 
 }
 
@@ -1151,6 +1418,122 @@ Archive::ResourceLoader( lua_State *L )
 	return 1;
 }
 
+struct ArchiveLuaStream
+{
+	FILE *file;
+	U32 seed;
+	U32 absoluteOffset;
+	U32 remaining;
+	U32 position;
+	char buffer[4096];
+	bool failed;
+};
+
+static const char*
+ArchiveLuaStreamReader( lua_State *L, void *data, size_t *size )
+{
+	Rtt_UNUSED( L );
+
+	ArchiveLuaStream *stream = (ArchiveLuaStream*)data;
+	if ( ! stream || stream->failed || 0 == stream->remaining )
+	{
+		*size = 0;
+		return NULL;
+	}
+
+	size_t bytesToRead = stream->remaining < sizeof( stream->buffer )
+		? stream->remaining
+		: sizeof( stream->buffer );
+	size_t bytesRead = fread( stream->buffer, 1, bytesToRead, stream->file );
+	if ( bytesRead == 0 )
+	{
+		stream->failed = true;
+		*size = 0;
+		return NULL;
+	}
+
+	ArchiveXorTransform(
+		stream->buffer,
+		bytesRead,
+		stream->seed,
+		stream->absoluteOffset + stream->position );
+
+	stream->position += (U32)bytesRead;
+	stream->remaining -= (U32)bytesRead;
+	*size = bytesRead;
+	return stream->buffer;
+}
+
+static int
+LoadLuaBufferXor(
+	lua_State *L,
+	Rtt_Allocator& allocator,
+	const void *resource,
+	U32 resourceLen,
+	U32 seed,
+	U32 absoluteOffset,
+	const char *name )
+{
+	size_t allocSize = resourceLen > 0 ? resourceLen : 1;
+	char *buffer = (char*)Rtt_MALLOC( & allocator, allocSize );
+	if ( ! buffer )
+	{
+		lua_pushfstring( L, "archive is corrupted. could not allocate resource (%s)", name );
+		return LUA_ERRMEM;
+	}
+
+	memcpy( buffer, resource, resourceLen );
+	ArchiveXorTransform( buffer, resourceLen, seed, absoluteOffset );
+	int status = luaL_loadbuffer( L, buffer, resourceLen, name );
+	Rtt_FREE( buffer );
+	return status;
+}
+
+static int
+LoadLuaStreamXor(
+	lua_State *L,
+	const char *archivePath,
+	U32 resourceOffset,
+	U32 resourceLen,
+	U32 seed,
+	const char *name )
+{
+	FILE *file = archivePath ? Rtt_FileOpen( archivePath, "rb" ) : NULL;
+	if ( ! file )
+	{
+		lua_pushfstring( L, "archive is corrupted. could not open archive for resource (%s)", name );
+		return LUA_ERRFILE;
+	}
+
+	int status = 0;
+	if ( 0 != fseek( file, resourceOffset, SEEK_SET ) )
+	{
+		lua_pushfstring( L, "archive is corrupted. could not seek resource (%s)", name );
+		status = LUA_ERRFILE;
+	}
+	else
+	{
+		ArchiveLuaStream stream;
+		stream.file = file;
+		stream.seed = seed;
+		stream.absoluteOffset = resourceOffset;
+		stream.remaining = resourceLen;
+		stream.position = 0;
+		stream.failed = false;
+
+		status = lua_load( L, ArchiveLuaStreamReader, & stream, name );
+		if ( 0 == status && stream.failed )
+		{
+			lua_pop( L, 1 );
+			lua_pushfstring( L, "archive is corrupted. could not read resource (%s)", name );
+			status = LUA_ERRFILE;
+		}
+	}
+
+	Rtt_FileClose( file );
+	return status;
+}
+
 int
 Archive::LoadResource( lua_State *L, const char *name )
 {
@@ -1179,7 +1562,28 @@ Archive::LoadResource( lua_State *L, const char *name )
 			{
 				U32 resourceLen = 0;
 				void* resource = reader.ParseData( resourceLen );
-				status = luaL_loadbuffer( L, static_cast< const char* >( resource ), resourceLen, name );
+				if ( reader.IsXorEnabled() )
+				{
+					U32 resourceOffset = reader.OffsetOf( resource );
+					if ( fPath )
+					{
+						int stackTop = lua_gettop( L );
+						status = LoadLuaStreamXor( L, fPath, resourceOffset, resourceLen, reader.GetXorSeed(), name );
+						if ( LUA_ERRFILE == status )
+						{
+							lua_settop( L, stackTop );
+							status = LoadLuaBufferXor( L, fAllocator, resource, resourceLen, reader.GetXorSeed(), resourceOffset, name );
+						}
+					}
+					else
+					{
+						status = LoadLuaBufferXor( L, fAllocator, resource, resourceLen, reader.GetXorSeed(), resourceOffset, name );
+					}
+				}
+				else
+				{
+					status = luaL_loadbuffer( L, static_cast< const char* >( resource ), resourceLen, name );
+				}
 				goto exit_gracefully;
 			}
 			errorFormat = kFormatAchiveCorrupted;

@@ -4347,6 +4347,22 @@ LuaTextObjectProxyVTable::Constant()
 }
 
 int
+LuaTextObjectProxyVTable::setStrokeColor( lua_State *L )
+{
+    TextObject* o = (TextObject*)LuaProxy::GetProxyableObject( L, 1 );
+
+    Rtt_WARN_SIM_PROXY_TYPE( L, 1, TextObject );
+
+    if ( o )
+    {
+        Color c = LuaLibDisplay::toColor( L, 2, o->IsByteColorRange() );
+        o->SetTextStrokeColor( c );
+    }
+
+    return 0;
+}
+
+int
 LuaTextObjectProxyVTable::ValueForKey( lua_State *L, const MLuaProxyable& object, const char key[], bool overrideRestriction /* = false */ ) const
 {
     if ( ! key ) { return 0; }
@@ -4360,10 +4376,13 @@ LuaTextObjectProxyVTable::ValueForKey( lua_State *L, const MLuaProxyable& object
         "setMask",           // 2
         "setTextColor#",     // 3 - DEPRECATED
         "baselineOffset",    // 4
+        "setStrokeColor",    // 5
+        "setTextStrokeColor",// 6
+        "strokeWidth",       // 7
     };
 
     static const int numKeys = sizeof( keys ) / sizeof( const char * );
-    static StringHash sHash( *LuaContext::GetAllocator( L ), keys, numKeys, 5, 2, 2, __FILE__, __LINE__ );
+    static StringHash sHash( *LuaContext::GetAllocator( L ), keys, numKeys, 8, 5, 2, __FILE__, __LINE__ );
     StringHash *hash = &sHash;
 
     // TextObject* o = (TextObject*)LuaProxy::GetProxyableObject( L, 1 );
@@ -4404,6 +4423,17 @@ LuaTextObjectProxyVTable::ValueForKey( lua_State *L, const MLuaProxyable& object
         case 4:
             {
                 lua_pushnumber(L, o.GetBaselineOffset() );
+            }
+            break;
+        case 5:
+        case 6:
+            {
+                Lua::PushCachedFunction( L, Self::setStrokeColor );
+            }
+            break;
+        case 7:
+            {
+                lua_pushinteger( L, o.GetTextStrokeWidth() );
             }
             break;
         default:
@@ -4455,10 +4485,11 @@ LuaTextObjectProxyVTable::SetValueForKey( lua_State *L, MLuaProxyable& object, c
     static const char * keys[] =
     {
         "text",            // 0
-        "size"            // 1
+        "size",            // 1
+        "strokeWidth"      // 2
     };
     static const int numKeys = sizeof( keys ) / sizeof( const char * );
-    static StringHash sHash( *LuaContext::GetAllocator( L ), keys, numKeys, 2, 0, 1, __FILE__, __LINE__ );
+    static StringHash sHash( *LuaContext::GetAllocator( L ), keys, numKeys, 3, 0, 1, __FILE__, __LINE__ );
     StringHash *hash = &sHash;
 
     int index = hash->Lookup( key );
@@ -4473,6 +4504,20 @@ LuaTextObjectProxyVTable::SetValueForKey( lua_State *L, MLuaProxyable& object, c
     case 1:
         {
             o.SetSize( luaL_toreal( L, valueIndex ) );
+        }
+        break;
+    case 2:
+        {
+            int width = (int)lua_tointeger( L, valueIndex );
+            if ( width < 0 )
+            {
+                width = 0;
+            }
+            else if ( width > 255 )
+            {
+                width = 255;
+            }
+            o.SetTextStrokeWidth( (U8)width );
         }
         break;
     default:

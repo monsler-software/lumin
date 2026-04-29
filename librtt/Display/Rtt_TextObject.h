@@ -13,6 +13,9 @@
 #include "Core/Rtt_Real.h"
 #include "Core/Rtt_String.h"
 #include "Display/Rtt_RectObject.h"
+#include "Renderer/Rtt_RenderTypes.h"
+
+#include <vector>
 
 // ----------------------------------------------------------------------------
 
@@ -104,6 +107,11 @@ class TextObject : public RectObject
 		void SetSize( Real newValue );
 		Real GetSize() const;
 
+		void SetTextStrokeColor( Color newValue );
+		Color GetTextStrokeColor() const { return fTextStrokeColor; }
+		void SetTextStrokeWidth( U8 newValue );
+		U8 GetTextStrokeWidth() const { return fTextStrokeWidth; }
+
 		// Note: assumes receiver will own the font after SetFont() is called
 		void SetFont( PlatformFont *newValue );
 //		const PlatformFont* GetFont() const { return fFont; }
@@ -113,6 +121,11 @@ class TextObject : public RectObject
 
 
 	private:
+		bool IsTextStrokeVisible() const;
+		void ReleaseTextStrokeResources();
+		void UpdateTextStrokeResources( const Display& display, const Geometry *baseGeometry, const Matrix& baseMatrix );
+
+	private:
 		Display& fDisplay;
 		String fText;
 		PlatformFont* fOriginalFont;
@@ -120,9 +133,13 @@ class TextObject : public RectObject
 		Real fWidth;
 		Real fHeight;
 		Real fBaselineOffset;	
+		Color fTextStrokeColor;
+		U8 fTextStrokeWidth;
 		String fAlignment;
 		mutable Geometry *fGeometry;
 		mutable Uniform *fMaskUniform;
+		std::vector< Geometry* > fStrokeGeometries;
+		std::vector< Uniform* > fStrokeMaskUniforms;
 };
 
 // ----------------------------------------------------------------------------
