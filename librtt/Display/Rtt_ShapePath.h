@@ -39,6 +39,7 @@ class ShapePath : public ClosedPath
 
     public:
         static ShapePath *NewRoundedRect( Rtt_Allocator *pAllocator, Real width, Real height, Real radius );
+        static ShapePath *NewRoundedRect( Rtt_Allocator *pAllocator, Real width, Real height, Real topLeftRadius, Real topRightRadius, Real bottomRightRadius, Real bottomLeftRadius );
         static ShapePath *NewCircle( Rtt_Allocator *pAllocator, Real radius );
         static ShapePath *NewPolygon( Rtt_Allocator *pAllocator );
         static ShapePath *NewMesh( Rtt_Allocator *pAllocator, Geometry::PrimitiveType meshType );

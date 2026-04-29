@@ -16,7 +16,7 @@
 #undef APSTUDIO_READONLY_SYMBOLS
 
 /////////////////////////////////////////////////////////////////////////////
-// English (United States) resources
+// Английский (США) resources
 
 #if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
 LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
@@ -151,10 +151,10 @@ BEGIN
         POPUP "&Build"
         BEGIN
             MENUITEM "&Android...\tCtrl+B",         ID_BUILD_FOR_ANDROID
-            MENUITEM "&HTML5...\tCtrl+Alt+B", ID_BUILD_FOR_WEB
+            MENUITEM "&HTML5...\tCtrl+Alt+B",       ID_BUILD_FOR_WEB
             MENUITEM "&Windows...\tCtrl+Shift+B",   ID_BUILD_FOR_WIN32
             MENUITEM "&Linux...\tCtrl+Shift+Alt+B", ID_BUILD_FOR_LINUX
-            MENUITEM "&NX Switch...\tShift+Alt+B", ID_BUILD_FOR_NXS
+            MENUITEM "&NX Switch...\tShift+Alt+B",  ID_BUILD_FOR_NXS
         END
         MENUITEM "Open in &Editor\tCtrl+Shift+O", ID_FILE_OPENINEDITOR
         MENUITEM "Show Project &Files",         ID_FILE_SHOW_PROJECT_FILES
@@ -237,7 +237,7 @@ IDR_MAINFRAME ACCELERATORS
 BEGIN
     "B",            ID_BUILD_FOR_ANDROID,   VIRTKEY, CONTROL, NOINVERT
     "B",            ID_BUILD_FOR_LINUX,     VIRTKEY, SHIFT, CONTROL, ALT, NOINVERT
-    "B",            ID_BUILD_FOR_NXS,  VIRTKEY, SHIFT, ALT, NOINVERT
+    "B",            ID_BUILD_FOR_NXS,       VIRTKEY, SHIFT, ALT, NOINVERT
     "B",            ID_BUILD_FOR_WEB,       VIRTKEY, CONTROL, ALT, NOINVERT
     "B",            ID_BUILD_FOR_WIN32,     VIRTKEY, SHIFT, CONTROL, NOINVERT
     "W",            ID_FILE_CLOSE,          VIRTKEY, CONTROL, NOINVERT
@@ -813,7 +813,7 @@ END
 
 STRINGTABLE
 BEGIN
-    IDR_MAINFRAME           "Solar2D Simulator"
+    IDR_MAINFRAME           "Lumin Simulator"
     IDS_BUILDWEBUPSELL      "Your subscription restricts %s builds to Trial mode.  Upgrade your subscription to remove restrictions."
     IDS_INVALID_WEB_APP_VERSION_NUMBER 
                             "Your version code is invalid.\r\n\r\n It must be a single number and may not contain dots. This version number cannot be less than 1."
@@ -1173,7 +1173,7 @@ BEGIN
     IDS_REMIND_ME_LATER     "Remind me Later"
 END
 
-#endif    // English (United States) resources
+#endif    // Английский (США) resources
 /////////////////////////////////////////////////////////////////////////////
 
 

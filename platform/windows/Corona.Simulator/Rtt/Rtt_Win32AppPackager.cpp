@@ -223,7 +223,7 @@ int Win32AppPackager::Build(
 	utf16ExeFilePath.append(utf16ExeFileName);
 	{
 		std::wstring utf16TemplateExeFilePath(binDirectoryPath.GetUTF16());
-		utf16TemplateExeFilePath.append(L"\\Corona.App.exe");
+		utf16TemplateExeFilePath.append(L"\\Lumin.App.exe");
 		BOOL wasRenamed = ::MoveFileW(utf16TemplateExeFilePath.c_str(), utf16ExeFilePath.c_str());
 		if (!wasRenamed)
 		{

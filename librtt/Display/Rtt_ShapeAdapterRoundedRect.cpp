@@ -38,6 +38,15 @@ ShapeAdapterRoundedRect::ShapeAdapterRoundedRect()
 {
 }
 
+static void
+InvalidateRoundedRectPath( ShapePath *path )
+{
+	path->Invalidate(
+		ClosedPath::kFillSource | ClosedPath::kFillSourceTexture |
+		ClosedPath::kStrokeSource | ClosedPath::kStrokeSourceTexture );
+	path->GetObserver()->Invalidate( DisplayObject::kGeometryFlag | DisplayObject::kStageBoundsFlag );
+}
+
 StringHash *
 ShapeAdapterRoundedRect::GetHash( lua_State *L ) const
 {
@@ -46,8 +55,12 @@ ShapeAdapterRoundedRect::GetHash( lua_State *L ) const
 		"width",				// 0
 		"height",				// 1
 		"radius",				// 2
+		"radiusTopLeft",		// 3
+		"radiusTopRight",		// 4
+		"radiusBottomRight",	// 5
+		"radiusBottomLeft",		// 6
 	};
-	static StringHash sHash( *LuaContext::GetAllocator( L ), keys, sizeof( keys ) / sizeof( const char * ), 3, 0, 1, __FILE__, __LINE__ );
+	static StringHash sHash( *LuaContext::GetAllocator( L ), keys, sizeof( keys ) / sizeof( const char * ), 7, 0, 1, __FILE__, __LINE__ );
 	return &sHash;
 }
 
@@ -81,6 +94,18 @@ ShapeAdapterRoundedRect::ValueForKey(
 			break;
 		case 2:
 			lua_pushnumber( L, tesselator->GetRadius() );
+			break;
+		case 3:
+			lua_pushnumber( L, tesselator->GetCornerRadius( TesselatorRoundedRect::kTopLeftCorner ) );
+			break;
+		case 4:
+			lua_pushnumber( L, tesselator->GetCornerRadius( TesselatorRoundedRect::kTopRightCorner ) );
+			break;
+		case 5:
+			lua_pushnumber( L, tesselator->GetCornerRadius( TesselatorRoundedRect::kBottomRightCorner ) );
+			break;
+		case 6:
+			lua_pushnumber( L, tesselator->GetCornerRadius( TesselatorRoundedRect::kBottomLeftCorner ) );
 			break;
 		default:
 			result = Super::ValueForKey( sender, L, key );
@@ -117,16 +142,14 @@ ShapeAdapterRoundedRect::SetValueForKey(
 			{
 				Real newValue = luaL_toreal( L, valueIndex );
 				tesselator->SetWidth( newValue );
-				path->Invalidate( ClosedPath::kFillSource | ClosedPath::kStrokeSource );
-				path->GetObserver()->Invalidate( DisplayObject::kGeometryFlag | DisplayObject::kStageBoundsFlag );
+				InvalidateRoundedRectPath( path );
 			}
 			break;
 		case 1:
 			{
 				Real newValue = luaL_toreal( L, valueIndex );
 				tesselator->SetHeight( newValue );
-				path->Invalidate( ClosedPath::kFillSource | ClosedPath::kStrokeSource );
-				path->GetObserver()->Invalidate( DisplayObject::kGeometryFlag | DisplayObject::kStageBoundsFlag );
+				InvalidateRoundedRectPath( path );
 			}
 			break;
 		case 2:
@@ -135,11 +158,26 @@ ShapeAdapterRoundedRect::SetValueForKey(
 				maxRadius = Rtt_RealDiv2( maxRadius );
 
 				Real radius = luaL_toreal( L, valueIndex );
-				radius = Min( radius, maxRadius );
+				radius = Clamp( radius, 0.f, maxRadius );
 
 				tesselator->SetRadius( radius );
-				path->Invalidate( ClosedPath::kFillSource | ClosedPath::kStrokeSource );
-				path->GetObserver()->Invalidate( DisplayObject::kGeometryFlag | DisplayObject::kStageBoundsFlag );
+				InvalidateRoundedRectPath( path );
+			}
+			break;
+		case 3:
+		case 4:
+		case 5:
+		case 6:
+			{
+				Real maxRadius = Min( tesselator->GetWidth(), tesselator->GetHeight() );
+				maxRadius = Rtt_RealDiv2( maxRadius );
+
+				Real radius = luaL_toreal( L, valueIndex );
+				radius = Clamp( radius, 0.f, maxRadius );
+
+				TesselatorRoundedRect::Corner corner = (TesselatorRoundedRect::Corner)( index - 3 );
+				tesselator->SetCornerRadius( corner, radius );
+				InvalidateRoundedRectPath( path );
 			}
 			break;
 		default:

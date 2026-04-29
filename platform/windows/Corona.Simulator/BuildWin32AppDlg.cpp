@@ -518,7 +518,7 @@ void CBuildWin32AppDlg::OnOK()
 			{
 				// Run the built app via the Corona Console.
 				WinString outputViewerFilePath(((CSimulatorApp*)::AfxGetApp())->GetApplicationDir());
-				outputViewerFilePath.Append(L"\\Corona.Console.exe");
+				outputViewerFilePath.Append(L"\\Lumin.Console.exe");
 				WinString commandLineArguments;
 				commandLineArguments.Append(L"/command:run \"");
 				commandLineArguments.Append(win32DestinationDirectoryPath.GetUTF16());

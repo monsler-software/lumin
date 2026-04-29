@@ -10,8 +10,8 @@
 //
 // Summary:
 // This is a thin proxy DLL that provides the same Corona public APIs as
-// the "CoronaLabs.Corona.Native" library project provides, except this
-// library's public exports are "forwarded" to the "Corona Simulator.exe"
+// the "Lumin.Native" library project provides, except this
+// library's public exports are "forwarded" to the "Lumin.Simulator.exe"
 // file's public exports. We do this because the Corona native library is
 // statically linked into the simulator, but plugins are set up to implicitly
 // link against an external Corona DLL. So, this proxy DLL allows plugins
@@ -54,23 +54,23 @@ BOOL APIENTRY DllMain(HMODULE moduleHandle, DWORD reasonCode, LPVOID reserved)
 
 
 #pragma region Private Functions/Macros
-/// <summary>Fetches a handle to the "Corona Simulator.exe" this library will interface with.</summary>
-/// <returns>Returns a handle to the "Corona Simulator.exe" module.</returns>
+/// <summary>Fetches a handle to the "Lumin.Simulator.exe" this library will interface with.</summary>
+/// <returns>Returns a handle to the "Lumin.Simulator.exe" module.</returns>
 static HMODULE GetSimulatorModuleHandle()
 {
 	static HMODULE sModuleHandle = nullptr;
 	if (!sModuleHandle)
 	{
-//TODO: Make this work with the "Corona.Console.exe" too.
+//TODO: Make this work with the "Lumin.Console.exe" too.
 //      Perhaps change it to use the main module's file path which will always reference the EXE.
-		sModuleHandle = ::LoadLibraryW(L"Corona Simulator.exe");
+		sModuleHandle = ::LoadLibraryW(L"Lumin.Simulator.exe");
 	}
 	return sModuleHandle;
 }
 
 /// <summary>
 ///  <para>
-///   Macro used to fetch and store a public Corona API callback from the "Corona Simulator.exe"
+///   Macro used to fetch and store a public Corona API callback from the "Lumin.Simulator.exe"
 ///   matching the calling function's name.
 ///  </para>
 ///  <para>
@@ -84,7 +84,7 @@ static HMODULE GetSimulatorModuleHandle()
 		sCallback = (CoronaCallbackType)::GetProcAddress(::GetSimulatorModuleHandle(), __FUNCTION__); \
 	}
 
-/// <summary>Invokes the "Corona Simulator.exe" module's callback loaded via the CoronaCallbackLoad() macro.</summary>
+/// <summary>Invokes the "Lumin.Simulator.exe" module's callback loaded via the CoronaCallbackLoad() macro.</summary>
 #define CoronaCallbackInvoke ((CoronaCallbackType)sCallback)
 
 #pragma endregion

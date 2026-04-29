@@ -6,6 +6,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <OutDir>$(SolutionDir)Bin\Corona\</OutDir>
+    <TargetName>Lumin.Shell</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

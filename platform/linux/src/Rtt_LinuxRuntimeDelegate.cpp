@@ -78,9 +78,9 @@ namespace Rtt
 		lua_getfield(L, -1, "fps");
 		int fps = (int)lua_tointeger(L, -1);
 
-		if (60 == fps) // Besides default (30), only 60 fps is supported
+		if (fps > 0)
 		{
-			fFPS = 60;
+			fFPS = fps;
 		}
 		lua_pop(L, 1);
 

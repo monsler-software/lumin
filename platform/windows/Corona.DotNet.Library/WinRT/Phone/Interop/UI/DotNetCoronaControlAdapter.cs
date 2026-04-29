@@ -8,7 +8,7 @@ namespace CoronaLabs.Corona.WinRT.Phone.Interop.UI
 	{
 		#region Constants
 		/// <summary>
-		///  Fully qualified class type name of the CoronaPanel control in the Corona.Controls.DotNet.dll library.
+		///  Fully qualified class type name of the CoronaPanel control in the Lumin.Controls.DotNet.dll library.
 		/// </summary>
 		private const String CoronaPanelFullTypeName = "CoronaLabs.Corona.WinRT.Phone.CoronaPanel";
 
@@ -33,7 +33,7 @@ namespace CoronaLabs.Corona.WinRT.Phone.Interop.UI
 		/// </param>
 		public DotNetCoronaControlAdapter(System.Windows.FrameworkElement coronaPanel) : base(coronaPanel)
 		{
-			// Verify that the argument is of type "CoronaPanel", which resides in the "Corona.Controls.DotNet.dll" library.
+			// Verify that the argument is of type "CoronaPanel", which resides in the "Lumin.Controls.DotNet.dll" library.
 			// Note: This must be done via reflection because the CoronaPanel control cannot be in this library.
 			//       The reason is because the Visual Studio UI designer will fail to load/display a control from a
 			//       library that implements native C++/CX interface like this library does.

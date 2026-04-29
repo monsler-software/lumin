@@ -271,10 +271,12 @@ class Runtime : public MCallback,
 //		void DispatchEvent( const MEvent& e, const char *errorMsg, S32 errorCode );
 
 		// Desired fps and interval
-		U8 GetFPS() const { return fFPS; }
+		U32 GetFPS() const { return fFPS; }
 		float GetFrameInterval() const { return 1.f / ((float)fFPS); }
 
 		U32 GetFrame() const { return fFrame; }
+		float GetFrameDeltaTime() const { return fFrameDeltaTime; }
+		double GetFrameDeltaMS() const { return ((double)fFrameDeltaTime) * 1000.; }
 
 		// Number of ms since app launch
 		double GetElapsedMS() const;
@@ -338,6 +340,9 @@ class Runtime : public MCallback,
 
 		void Render();
 
+	private:
+		void UpdateFrameDeltaTime();
+
 	public:
 		void Blit();
 		
@@ -381,11 +386,13 @@ class Runtime : public MCallback,
 		PlatformOpenALPlayer* fOpenALPlayer;
 #endif
 
-		U8 fFPS;
+		U32 fFPS;
 		S8 fIsSuspended;
 		U16 fProperties;
 		U32 fSuspendOverrideProperties;
 		U32 fFrame;
+		Rtt_AbsoluteTime fPreviousFrameTime;
+		float fFrameDeltaTime;
 		int fLaunchArgsRef;
 		const char *fSimulatorPlatformName;
 		int fDownloadablePluginsRef;

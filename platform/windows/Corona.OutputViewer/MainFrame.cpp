@@ -61,6 +61,69 @@ static const long kRtfMaxCharacters = 4194304 / sizeof(TCHAR);
 /// <summary>Name of the registry entry used to store the show/hide state of the "Alert List" pane.</summary>
 static const TCHAR kShowAlertListPaneRegistryEntryName[] = _T("ShowAlertListPane");
 
+namespace
+{
+
+bool IsWindowsAppDarkThemeEnabled()
+{
+	DWORD value = 1;
+	DWORD valueSize = sizeof(value);
+	LSTATUS result = ::RegGetValueW(
+		HKEY_CURRENT_USER,
+		L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+		L"AppsUseLightTheme",
+		RRF_RT_REG_DWORD,
+		nullptr,
+		&value,
+		&valueSize);
+	return (ERROR_SUCCESS == result) && (0 == value);
+}
+
+bool ShouldUseDarkTitleBar(const VisualTheme& theme)
+{
+	if (&VisualTheme::kDark == &theme)
+	{
+		return true;
+	}
+	if (&VisualTheme::kBlue == &theme)
+	{
+		return false;
+	}
+	return IsWindowsAppDarkThemeEnabled();
+}
+
+void ApplyTitleBarTheme(HWND windowHandle, const VisualTheme& theme)
+{
+	if (!windowHandle)
+	{
+		return;
+	}
+
+	HMODULE dwmapiModule = ::LoadLibraryW(L"dwmapi.dll");
+	if (!dwmapiModule)
+	{
+		return;
+	}
+
+	typedef HRESULT (WINAPI *DwmSetWindowAttributeProc)(HWND, DWORD, LPCVOID, DWORD);
+	auto setWindowAttribute = (DwmSetWindowAttributeProc)::GetProcAddress(dwmapiModule, "DwmSetWindowAttribute");
+	if (setWindowAttribute)
+	{
+		BOOL useDarkMode = ShouldUseDarkTitleBar(theme) ? TRUE : FALSE;
+		const DWORD kUseImmersiveDarkMode = 20;
+		const DWORD kUseImmersiveDarkModeBefore20H1 = 19;
+		HRESULT result = setWindowAttribute(windowHandle, kUseImmersiveDarkMode, &useDarkMode, sizeof(useDarkMode));
+		if (FAILED(result))
+		{
+			setWindowAttribute(windowHandle, kUseImmersiveDarkModeBefore20H1, &useDarkMode, sizeof(useDarkMode));
+		}
+	}
+
+	::FreeLibrary(dwmapiModule);
+}
+
+} // namespace
+
 #pragma endregion
 
 
@@ -161,6 +224,7 @@ int MainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	{
 		SetWindowTextW(fCustomWindowName);
 	}
+	ApplyTitleBarTheme(GetSafeHwnd(), appPointer->GetVisualTheme());
 
 	// prevent the menu bar from taking the focus on activation
 	CMFCPopupMenu::SetForceMenuFocus(FALSE);
@@ -494,6 +558,7 @@ BOOL MainFrame::OnCmdMsg(UINT nID, int nCode, void* pExtra, AFX_CMDHANDLERINFO* 
 void MainFrame::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
 {
 	CFrameWndEx::OnSettingChange(uFlags, lpszSection);
+	ApplyTitleBarTheme(GetSafeHwnd(), ((MainApp*)AfxGetApp())->GetVisualTheme());
 }
 
 void MainFrame::OnTimer(UINT_PTR eventId)
@@ -1328,6 +1393,7 @@ void MainFrame::OnVisualThemeChanged(MainApp& sender, const Interop::EventArgs& 
 {
 	// Fetch the currently selected theme.
 	const VisualTheme* themePointer = &sender.GetVisualTheme();
+	ApplyTitleBarTheme(GetSafeHwnd(), *themePointer);
 
 	// Apply the theme to the RTF control.
 	CHARFORMAT characterFormat{};

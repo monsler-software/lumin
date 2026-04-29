@@ -31,6 +31,56 @@ using namespace Gdiplus;
 #define new DEBUG_NEW
 #endif
 
+namespace
+{
+
+bool IsWindowsAppDarkThemeEnabled()
+{
+	DWORD value = 1;
+	DWORD valueSize = sizeof(value);
+	LSTATUS result = ::RegGetValueW(
+		HKEY_CURRENT_USER,
+		L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+		L"AppsUseLightTheme",
+		RRF_RT_REG_DWORD,
+		nullptr,
+		&value,
+		&valueSize);
+	return (ERROR_SUCCESS == result) && (0 == value);
+}
+
+void ApplySystemTitleBarTheme(HWND windowHandle)
+{
+	if (!windowHandle)
+	{
+		return;
+	}
+
+	HMODULE dwmapiModule = ::LoadLibraryW(L"dwmapi.dll");
+	if (!dwmapiModule)
+	{
+		return;
+	}
+
+	typedef HRESULT (WINAPI *DwmSetWindowAttributeProc)(HWND, DWORD, LPCVOID, DWORD);
+	auto setWindowAttribute = (DwmSetWindowAttributeProc)::GetProcAddress(dwmapiModule, "DwmSetWindowAttribute");
+	if (setWindowAttribute)
+	{
+		BOOL useDarkMode = IsWindowsAppDarkThemeEnabled() ? TRUE : FALSE;
+		const DWORD kUseImmersiveDarkMode = 20;
+		const DWORD kUseImmersiveDarkModeBefore20H1 = 19;
+		HRESULT result = setWindowAttribute(windowHandle, kUseImmersiveDarkMode, &useDarkMode, sizeof(useDarkMode));
+		if (FAILED(result))
+		{
+			setWindowAttribute(windowHandle, kUseImmersiveDarkModeBefore20H1, &useDarkMode, sizeof(useDarkMode));
+		}
+	}
+
+	::FreeLibrary(dwmapiModule);
+}
+
+} // namespace
+
 // CMainFrame
 
 IMPLEMENT_DYNCREATE(CMainFrame, CFrameWnd)
@@ -40,6 +90,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
 	ON_WM_CLOSE()
 	ON_WM_SIZE()
 	ON_WM_GETMINMAXINFO()
+	ON_WM_SETTINGCHANGE()
 	ON_COMMAND(ID_WINDOW_ZOOMIN, &CMainFrame::OnWindowZoomIn)
 	ON_COMMAND(ID_WINDOW_ZOOMOUT, &CMainFrame::OnWindowZoomOut)
 	ON_UPDATE_COMMAND_UI(ID_WINDOW_ZOOMOUT, &CMainFrame::OnUpdateWindowZoomOut)
@@ -67,6 +118,8 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
 	if (CFrameWnd::OnCreate(lpCreateStruct) == -1)
 		return -1;
+
+	ApplySystemTitleBarTheme(GetSafeHwnd());
 
 	return 0;
 }
@@ -166,6 +219,12 @@ void CMainFrame::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 	lpMMI->ptMaxTrackSize.x = LONG_MAX;
 	lpMMI->ptMaxTrackSize.y = LONG_MAX;
     m_ptMinTrackSize = lpMMI->ptMinTrackSize;
+}
+
+void CMainFrame::OnSettingChange(UINT uFlags, LPCTSTR lpszSection)
+{
+	CFrameWnd::OnSettingChange(uFlags, lpszSection);
+	ApplySystemTitleBarTheme(GetSafeHwnd());
 }
 
 // OnUpdateWindowZoomOut - can zoom out further if Windows allows the

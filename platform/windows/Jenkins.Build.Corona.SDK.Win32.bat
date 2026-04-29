@@ -68,8 +68,8 @@ cd "%WORKSPACE%\platform\windows"
 call "%VS120COMNTOOLS%vsvars32.bat"
 devenv "Corona.SDK.sln" /rebuild "Release|x86"
 if release==%Release% (
-	rename ".\Bin\Corona.SDK.Installer\Corona.msi" "Corona-%YEAR%.%BUILD_NUMBER%-Release.msi"
+	rename ".\Bin\Corona.SDK.Installer\Lumin.msi" "Lumin-%YEAR%.%BUILD_NUMBER%-Release.msi"
 )
 if daily==%Release% (
-	rename ".\Bin\Corona.SDK.Installer\Corona.msi" "Corona-%YEAR%.%BUILD_NUMBER%.msi"
+	rename ".\Bin\Corona.SDK.Installer\Lumin.msi" "Lumin-%YEAR%.%BUILD_NUMBER%.msi"
 )

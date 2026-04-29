@@ -156,12 +156,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", "Corona Labs Inc."
-            VALUE "FileDescription", "Corona Console"
+            VALUE "FileDescription", "Lumin Console"
             VALUE "FileVersion", "1.0.0.2"
-            VALUE "InternalName", "Corona Console"
+            VALUE "InternalName", "Lumin Console"
             VALUE "LegalCopyright", "Copyright © 2010-2018 Corona Labs Inc."
-            VALUE "OriginalFilename", "Corona.Console.exe"
-            VALUE "ProductName", "Corona Console"
+            VALUE "OriginalFilename", "Lumin.Console.exe"
+            VALUE "ProductName", "Lumin Console"
             VALUE "ProductVersion", "1.0.0.1"
         END
     END

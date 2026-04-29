@@ -90,6 +90,9 @@
     <Import Project="..\Lua.Socket.Library\Lua.Socket.Library.Externals.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <TargetName>Lumin.Debugger</TargetName>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)Bin\Corona\</OutDir>

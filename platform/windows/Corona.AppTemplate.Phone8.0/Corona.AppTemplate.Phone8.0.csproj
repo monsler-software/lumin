@@ -10,7 +10,7 @@
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>CoronaLabs.Corona.AppTemplate</RootNamespace>
-    <AssemblyName>CoronaLabs.Corona.AppTemplate</AssemblyName>
+    <AssemblyName>Lumin.AppTemplate</AssemblyName>
     <TargetFrameworkIdentifier>WindowsPhone</TargetFrameworkIdentifier>
     <TargetFrameworkVersion>v8.0</TargetFrameworkVersion>
     <SilverlightVersion>$(TargetFrameworkVersion)</SilverlightVersion>
@@ -19,7 +19,7 @@
     </SupportedCultures>
     <XapOutputs>true</XapOutputs>
     <GenerateSilverlightManifest>true</GenerateSilverlightManifest>
-    <XapFilename>Corona.AppTemplate.xap</XapFilename>
+    <XapFilename>Lumin.AppTemplate.xap</XapFilename>
     <SilverlightManifestTemplate>Properties\AppManifest.xml</SilverlightManifestTemplate>
     <SilverlightAppEntry>CoronaLabs.Corona.AppTemplate.App</SilverlightAppEntry>
     <ValidateXaml>true</ValidateXaml>

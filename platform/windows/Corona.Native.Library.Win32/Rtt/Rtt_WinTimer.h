@@ -12,6 +12,8 @@
 #include "Core\Rtt_Build.h"
 #include "Rtt_PlatformTimer.h"
 #include <Windows.h>
+#include <mmsystem.h>
+#include <mutex>
 #include <unordered_map>
 
 
@@ -40,7 +42,7 @@ class WinTimer : public PlatformTimer
 		/// <summary>Sets the timer's interval in milliseconds. This can be applied while the timer is running.</summary>
 		/// <param name="milliseconds">
 		///  <para>How often the timer will "elapse" and invoke its given callback when running.</para>
-		///  <para>Cannot be set less than 10 milliseconds.</para>
+		///  <para>Values less than 1 millisecond are raised to 1 millisecond.</para>
 		/// </param>
 		virtual void SetInterval(U32 milliseconds) override;
 
@@ -62,8 +64,10 @@ class WinTimer : public PlatformTimer
 		/// </summary>
 		static VOID CALLBACK OnTimerElapsed(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
 
+		static void CALLBACK OnHighResolutionTimerElapsed(UINT timerId, UINT messageId, DWORD_PTR userData, DWORD_PTR param1, DWORD_PTR param2);
+
 		/// <summary>
-		///  <para>Compares the given tick values returned by ::GetTickCount().</para>
+		///  <para>Compares the given tick values returned by ::timeGetTime().</para>
 		///  <para>
 		///   Correctly handles tick overflow where large negative numbers are considered greater than
 		///   large positive numbers.
@@ -81,11 +85,14 @@ class WinTimer : public PlatformTimer
 		HWND fWindowHandle;
 		UINT_PTR fTimerPointer;
 		UINT_PTR fTimerID;
+		MMRESULT fHighResolutionTimerID;
+		volatile LONG fHighResolutionTimerMessagePending;
 		U32 fIntervalInMilliseconds;
 		S32 fNextIntervalTimeInTicks;
 
 		static std::unordered_map<UINT_PTR, WinTimer*> sTimerMap; // timer callback might be called after Stop(), so use this as a guard
 		static UINT_PTR sMostRecentTimerID; // use an incrementing index as key, to be robust against the rare case that a new timer is reallocated into the same memory
+		static std::mutex sTimerMutex;
 };
 
 }	// namespace Rtt

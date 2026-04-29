@@ -6,7 +6,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <TargetName>Corona Simulator</TargetName>
+    <TargetName>Lumin.Simulator</TargetName>
     <OutDir>$(SolutionDir)Bin\Corona\</OutDir>
     <TargetExt>.exe</TargetExt>
   </PropertyGroup>

@@ -148,6 +148,10 @@ FrameEvent::Push( lua_State *L ) const
 		lua_setfield( L, -2, "frame" );
 		lua_pushnumber( L, runtime->GetElapsedMS() );
 		lua_setfield( L, -2, "time" );
+		lua_pushnumber( L, runtime->GetFrameDeltaTime() );
+		lua_setfield( L, -2, "deltaTime" );
+		lua_pushnumber( L, runtime->GetFrameDeltaMS() );
+		lua_setfield( L, -2, "deltaMS" );
 	}
 
 	return 1;

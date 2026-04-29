@@ -5,7 +5,7 @@
 		TargetFramework="WindowsPhone,Version=v8.0"
 		MinVSVersion="11.0"
 		MoreInfo="https://coronalabs.com">
-	<File Reference="CoronaLabs.Corona.DotNet.dll"/>
-	<File Reference="CoronaLabs.Corona.Controls.DotNet.dll"/>
-	<File Reference="CoronaLabs.winmd" Implementation="CoronaLabs.Corona.Component.dll"/>
+	<File Reference="Lumin.DotNet.dll"/>
+	<File Reference="Lumin.Controls.DotNet.dll"/>
+	<File Reference="CoronaLabs.winmd" Implementation="Lumin.Component.dll"/>
 </FileList>

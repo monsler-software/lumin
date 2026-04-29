@@ -37,8 +37,14 @@ namespace Rtt
 ShapePath *
 ShapePath::NewRoundedRect( Rtt_Allocator *pAllocator, Real width, Real height, Real radius )
 {
+    return NewRoundedRect( pAllocator, width, height, radius, radius, radius, radius );
+}
+
+ShapePath *
+ShapePath::NewRoundedRect( Rtt_Allocator *pAllocator, Real width, Real height, Real topLeftRadius, Real topRightRadius, Real bottomRightRadius, Real bottomLeftRadius )
+{
     TesselatorRoundedRect *tesselator = Rtt_NEW( pAllocator,
-        TesselatorRoundedRect( width, height, radius ) );
+        TesselatorRoundedRect( width, height, topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius ) );
     ShapePath *result = Rtt_NEW( pAllocator, ShapePath( pAllocator, tesselator ) );
     result->SetAdapter( & ShapeAdapterRoundedRect::Constant() );
     return result;

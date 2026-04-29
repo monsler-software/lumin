@@ -9,7 +9,7 @@
 
 // All functions start with "app" by convention - not sure why, it was that way when I
 // took it over.
-// These are functions that are compiled in with Corona Simulator.exe
+// These are functions that are compiled in with Lumin.Simulator.exe
 // CoronaDll\corona.cpp, .h contain functions exported from that DLL.
 
 #include "stdafx.h"

@@ -179,7 +179,7 @@ namespace CoronaLabs.Corona.WinRT.Phone
 
 			// Verify that at least one of Corona's required native libraries is installed.
 			var coronaNativeLibraryPath = System.IO.Path.Combine(
-					Windows.ApplicationModel.Package.Current.InstalledLocation.Path, "CoronaLabs.Corona.Component.dll");
+					Windows.ApplicationModel.Package.Current.InstalledLocation.Path, "Lumin.Component.dll");
 			if (System.IO.File.Exists(coronaNativeLibraryPath) == false)
 			{
 				String message =

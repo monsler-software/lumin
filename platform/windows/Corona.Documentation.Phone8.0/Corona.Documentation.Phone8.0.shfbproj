@@ -47,10 +47,10 @@
       </ComponentConfig>
     </ComponentConfigurations>
     <DocumentationSources>
-      <DocumentationSource sourceFile="..\Corona.Controls.DotNet.Library.Phone8.0\Bin\x86\Release\CoronaLabs.Corona.Controls.DotNet.dll" xmlns="" />
-      <DocumentationSource sourceFile="..\Corona.Controls.DotNet.Library.Phone8.0\Bin\x86\Release\CoronaLabs.Corona.Controls.DotNet.xml" xmlns="" />
-      <DocumentationSource sourceFile="..\Corona.DotNet.Library\Bin\x86\Release\CoronaLabs.Corona.DotNet.dll" xmlns="" />
-      <DocumentationSource sourceFile="..\Corona.DotNet.Library\Bin\x86\Release\CoronaLabs.Corona.DotNet.xml" xmlns="" />
+      <DocumentationSource sourceFile="..\Corona.Controls.DotNet.Library.Phone8.0\Bin\x86\Release\Lumin.Controls.DotNet.dll" xmlns="" />
+      <DocumentationSource sourceFile="..\Corona.Controls.DotNet.Library.Phone8.0\Bin\x86\Release\Lumin.Controls.DotNet.xml" xmlns="" />
+      <DocumentationSource sourceFile="..\Corona.DotNet.Library\Bin\x86\Release\Lumin.DotNet.dll" xmlns="" />
+      <DocumentationSource sourceFile="..\Corona.DotNet.Library\Bin\x86\Release\Lumin.DotNet.xml" xmlns="" />
       <DocumentationSource sourceFile="..\Corona.Component.Library\Release\Win32\Corona.Component.Library.Phone8.0\CoronaLabs.winmd" xmlns="" />
       <DocumentationSource sourceFile="..\Corona.Component.Library\Release\Win32\Corona.Component.Library.Phone8.0\CoronaLabs.xml" xmlns="" />
     </DocumentationSources>

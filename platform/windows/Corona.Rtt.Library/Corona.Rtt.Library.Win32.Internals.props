@@ -10,7 +10,7 @@
   <PropertyGroup>
     <OutDir>$(Configuration)\$(Platform)\$(ProjectName)\</OutDir>
     <IntDir>$(Configuration)\$(Platform)\$(ProjectName)\</IntDir>
-    <TargetName>CoronaLabs.Corona.Rtt</TargetName>
+    <TargetName>Lumin.Rtt</TargetName>
     <ExtensionsToDeleteOnClean>*.lu;$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
   </PropertyGroup>
   <ItemDefinitionGroup>

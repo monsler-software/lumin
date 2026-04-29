@@ -10,6 +10,7 @@
 #include "stdafx.h"
 #include "Rtt_WinTimer.h"
 #include <windows.h>
+#include <mmsystem.h>
 
 
 namespace Rtt
@@ -17,14 +18,17 @@ namespace Rtt
 
 std::unordered_map<UINT_PTR, Rtt::WinTimer *> WinTimer::sTimerMap;
 UINT_PTR WinTimer::sMostRecentTimerID;
+std::mutex WinTimer::sTimerMutex;
 
 #pragma region Constructors/Destructors
 WinTimer::WinTimer(MCallback& callback, HWND windowHandle)
 :	PlatformTimer(callback)
 {
 	fWindowHandle = windowHandle;
-	fTimerPointer = NULL;
+	fTimerPointer = 0;
 	fIntervalInMilliseconds = 10;
+	fHighResolutionTimerID = 0;
+	fHighResolutionTimerMessagePending = 0;
 	fNextIntervalTimeInTicks = 0;
 }
 
@@ -45,16 +49,37 @@ void WinTimer::Start()
 		return;
 	}
 
-	// Start the timer, but with an interval faster than the configured interval.
+	// Start the timer, but not slower than the configured interval.
 	// We do this because Windows timers can invoke later than expected.
 	// To compensate, we'll schedule when to invoke the timer's callback using "fIntervalEndTimeInTicks".
-	fNextIntervalTimeInTicks = (S32)::GetTickCount() + (S32)fIntervalInMilliseconds;
+	fNextIntervalTimeInTicks = (S32)::timeGetTime() + (S32)fIntervalInMilliseconds;
 	fTimerID = ++sMostRecentTimerID; // ID should be non-0, so pre-increment for first time
-	fTimerPointer = ::SetTimer(fWindowHandle, fTimerID, 10, WinTimer::OnTimerElapsed);
-
-	if (IsRunning())
+	U32 timerInterval = Min(fIntervalInMilliseconds, 10U);
+	timerInterval = Max(timerInterval, 1U);
 	{
+		std::lock_guard<std::mutex> scopedLock(sTimerMutex);
 		sTimerMap[fTimerID] = this;
+	}
+
+	if (fWindowHandle && (fIntervalInMilliseconds < 16U))
+	{
+		::timeBeginPeriod(1);
+		fHighResolutionTimerID = ::timeSetEvent(timerInterval, 1, WinTimer::OnHighResolutionTimerElapsed, (DWORD_PTR)fTimerID, TIME_PERIODIC | TIME_CALLBACK_FUNCTION);
+		if (!fHighResolutionTimerID)
+		{
+			::timeEndPeriod(1);
+		}
+	}
+
+	if (!fHighResolutionTimerID)
+	{
+		fTimerPointer = ::SetTimer(fWindowHandle, fTimerID, timerInterval, WinTimer::OnTimerElapsed);
+		if (!IsRunning())
+		{
+			std::lock_guard<std::mutex> scopedLock(sTimerMutex);
+			sTimerMap.erase(fTimerID);
+			fTimerID = 0;
+		}
 	}
 }
 
@@ -66,23 +91,38 @@ void WinTimer::Stop()
 		return;
 	}
 
-	// Stop the timer.
-	::KillTimer(fWindowHandle, fTimerID);
+	UINT_PTR timerID = fTimerID;
+	MMRESULT highResolutionTimerID = fHighResolutionTimerID;
+	UINT_PTR timerPointer = fTimerPointer;
 
-	sTimerMap.erase(fTimerID);
+	{
+		std::lock_guard<std::mutex> scopedLock(sTimerMutex);
+		sTimerMap.erase(timerID);
+	}
 
-	fTimerPointer = NULL;
+	if (highResolutionTimerID)
+	{
+		::timeKillEvent(highResolutionTimerID);
+		::timeEndPeriod(1);
+	}
+	else if (timerPointer)
+	{
+		::KillTimer(fWindowHandle, timerID);
+	}
+
+	fHighResolutionTimerID = 0;
+	fTimerPointer = 0;
 	fTimerID = 0;
 }
 
 void WinTimer::SetInterval(U32 milliseconds)
 {
-	fIntervalInMilliseconds = milliseconds;
+	fIntervalInMilliseconds = Max(milliseconds, 1U);
 }
 
 bool WinTimer::IsRunning() const
 {
-	return (fTimerPointer != NULL);
+	return (fTimerPointer != 0) || (fHighResolutionTimerID != 0);
 }
 
 void WinTimer::Evaluate()
@@ -94,13 +134,13 @@ void WinTimer::Evaluate()
 	}
 
 	// Do not continue if we haven't reached the scheduled time yet.
-	if (CompareTicks((S32)::GetTickCount(), fNextIntervalTimeInTicks) < 0)
+	if (CompareTicks((S32)::timeGetTime(), fNextIntervalTimeInTicks) < 0)
 	{
 		return;
 	}
 
 	// Schedule the next interval time.
-	for (; CompareTicks((S32)::GetTickCount(), fNextIntervalTimeInTicks) > 0; fNextIntervalTimeInTicks += fIntervalInMilliseconds);
+	for (; CompareTicks((S32)::timeGetTime(), fNextIntervalTimeInTicks) > 0; fNextIntervalTimeInTicks += fIntervalInMilliseconds);
 
 	// Invoke this timer's callback.
 	this->operator()();
@@ -112,10 +152,42 @@ void WinTimer::Evaluate()
 #pragma region Private Methods/Functions
 VOID CALLBACK WinTimer::OnTimerElapsed(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
 {
-	auto timer = sTimerMap.find(idEvent);
-	if (sTimerMap.end() != timer)
+	WinTimer *timerPointer = NULL;
 	{
-		timer->second->Evaluate();
+		std::lock_guard<std::mutex> scopedLock(sTimerMutex);
+		auto timer = sTimerMap.find(idEvent);
+		if (sTimerMap.end() != timer)
+		{
+			timerPointer = timer->second;
+			::InterlockedExchange(&timerPointer->fHighResolutionTimerMessagePending, 0);
+		}
+	}
+
+	if (timerPointer)
+	{
+		timerPointer->Evaluate();
+	}
+}
+
+void CALLBACK WinTimer::OnHighResolutionTimerElapsed(UINT timerId, UINT messageId, DWORD_PTR userData, DWORD_PTR param1, DWORD_PTR param2)
+{
+	HWND windowHandle = NULL;
+	bool shouldPostMessage = false;
+	UINT_PTR timerID = (UINT_PTR)userData;
+
+	{
+		std::lock_guard<std::mutex> scopedLock(sTimerMutex);
+		auto timer = sTimerMap.find(timerID);
+		if (sTimerMap.end() != timer)
+		{
+			windowHandle = timer->second->fWindowHandle;
+			shouldPostMessage = (0 == ::InterlockedCompareExchange(&timer->second->fHighResolutionTimerMessagePending, 1, 0));
+		}
+	}
+
+	if (windowHandle && shouldPostMessage)
+	{
+		::PostMessage(windowHandle, WM_TIMER, timerID, (LPARAM)WinTimer::OnTimerElapsed);
 	}
 }
 

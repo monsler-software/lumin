@@ -252,7 +252,7 @@ void CBuildNxSDlg::OnOK()  // OnBuild()
 	if (messageDlg.DoModal() == ID_MSG_BUTTON3)
 	{
 		// start live server with URL
-		CString sCoronaLiveServerExe = ((CSimulatorApp*)AfxGetApp())->GetApplicationDir() + _T("\\Corona.LiveServer.exe");
+		CString sCoronaLiveServerExe = ((CSimulatorApp*)AfxGetApp())->GetApplicationDir() + _T("\\Lumin.LiveServer.exe");
 		try
 		{
 			CString sAppPath = CString(_T("html5:")) + m_pProject->GetSaveDir() + _T("\\") + m_pProject->GetName();

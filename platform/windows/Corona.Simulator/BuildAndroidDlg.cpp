@@ -824,7 +824,7 @@ void CBuildAndroidDlg::OnOK()  // OnBuild()
 	// Add the project to the Corona Live Server list, if enabled.
 	if (isLiveBuild)
 	{
-		CString sCoronaLiveServerExe = ((CSimulatorApp *)AfxGetApp())->GetApplicationDir() + _T("\\Corona.LiveServer.exe");
+		CString sCoronaLiveServerExe = ((CSimulatorApp *)AfxGetApp())->GetApplicationDir() + _T("\\Lumin.LiveServer.exe");
 		CString sAppPath = m_pProject->GetPath();
 		try
 		{

@@ -97,7 +97,7 @@ BOOL CSimulatorApp::InitInstance()
 	// Load the simulator version of the Corona library, which is only used by plugins to link against by name.
 	// This is a thin proxy DLL which forwards Solar2D's public APIs to this EXE's statically linked Solar2D APIs.
 	// This ensures that plugins link with the simulator's library and not the non-simulator version of the library.
-	CString coronaLibraryPath = GetApplicationDir() + _T("\\Resources\\CoronaLabs.Corona.Native.dll");
+	CString coronaLibraryPath = GetApplicationDir() + _T("\\Resources\\Lumin.Native.dll");
 	if (!Rtt_VERIFY(::LoadLibrary(coronaLibraryPath)))
 	{
 		CString message =
@@ -273,7 +273,7 @@ BOOL CSimulatorApp::InitInstance()
 		outputViewerArgs.Format("/parentProcess:%ld", ::GetCurrentProcessId());
 		outputViewerArgs.Append(L" /disableClose /windowName:\"Corona Simulator Console\"");
 
-		outputViewerFilePath.Append(L"\\Corona.Console.exe");
+		outputViewerFilePath.Append(L"\\Lumin.Console.exe");
 		Interop::Ipc::Process::LaunchSettings launchSettings{};
 		launchSettings.FileNamePath = outputViewerFilePath.GetUTF16();
 		launchSettings.CommandLineArguments = outputViewerArgs.GetTCHAR();

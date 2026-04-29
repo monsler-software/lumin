@@ -177,6 +177,8 @@ Runtime::Runtime(const MPlatform& platform, MCallback* viewCallback)
 	fProperties(0),
 	fSuspendOverrideProperties(kSuspendAll),
 	fFrame(0),
+	fPreviousFrameTime(0),
+	fFrameDeltaTime(1.f / 30.f),
 	fLaunchArgsRef(LUA_NOREF),
 	fSimulatorPlatformName(NULL),
 	fDownloadablePluginsRef(LUA_NOREF),
@@ -905,10 +907,10 @@ Runtime::ReadConfig( lua_State *L )
 
 	lua_getfield( L, -1, "fps" );
 	int fps = (int) lua_tointeger( L, -1 );
-	if ( 60 == fps )	// Besides default (30), only 60 fps is supported
+	if ( fps > 0 )
 	{
 		Rtt_ASSERT( ! IsProperty( kIsApplicationLoaded ) );
-		fFPS = 60;
+		fFPS = (U32)fps;
 	}
 	lua_pop( L, 1 );
 
@@ -1388,7 +1390,7 @@ void
 Runtime::BeginRunLoop()
 {
 	const U32 kFps = fFPS;
-	const U32 kInterval = 1000 / kFps;
+	const U32 kInterval = Max( 1U, 1000 / kFps );
 
 	fPhysicsWorld->Initialize( GetFrameInterval() );
 
@@ -1710,6 +1712,29 @@ Runtime::GetElapsedTime() const
 }
 
 void
+Runtime::UpdateFrameDeltaTime()
+{
+	Rtt_AbsoluteTime currentFrameTime = GetElapsedTime();
+
+	if ( fFrame > 0 )
+	{
+		Rtt_AbsoluteTime elapsed = currentFrameTime - fPreviousFrameTime;
+		const double kMillisecondsPerSecond = 1000.;
+		fFrameDeltaTime = (float)( ((double)Rtt_AbsoluteToMicroseconds( elapsed )) / ( kMillisecondsPerSecond * 1000. ) );
+		if ( fFrameDeltaTime <= 0.f )
+		{
+			fFrameDeltaTime = GetFrameInterval();
+		}
+	}
+	else
+	{
+		fFrameDeltaTime = GetFrameInterval();
+	}
+
+	fPreviousFrameTime = currentFrameTime;
+}
+
+void
 Runtime::Collect()
 {
 	LuaContext& vm = VMContext();
@@ -1982,6 +2007,7 @@ Runtime::operator()()
 			FinalizeWorkingThreadWithEvent(this, fVMContext->L());
 		}
 #endif
+		UpdateFrameDeltaTime();
 		fDisplay->Update();
 
 		++fFrame;

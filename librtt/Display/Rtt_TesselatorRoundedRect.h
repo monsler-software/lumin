@@ -26,12 +26,26 @@ class TesselatorRoundedRect : public TesselatorRectBase
 
 	public:
 		TesselatorRoundedRect( Real w, Real h, Real radius );
+		TesselatorRoundedRect( Real w, Real h, Real topLeftRadius, Real topRightRadius, Real bottomRightRadius, Real bottomLeftRadius );
 
 	public:
 		virtual Tesselator::eType GetType(){ return Tesselator::kType_RoundedRect; }
+		virtual Geometry::PrimitiveType GetFillPrimitive() const override;
+
+	public:
+		enum Corner
+		{
+			kTopLeftCorner = 0,
+			kTopRightCorner,
+			kBottomRightCorner,
+			kBottomLeftCorner,
+
+			kNumCorners
+		};
 
 	protected:
-		void AppendRoundedRect( ArrayVertex2& vertices, Real halfW, Real halfH, Real radius );
+		void AppendRoundedRect( ArrayVertex2& vertices, Real halfW, Real halfH, bool closeLoop ) const;
+		U32 PerimeterVertexCount() const;
 
 	public:
 		virtual void GenerateFill( ArrayVertex2& outVertices );
@@ -44,10 +58,13 @@ class TesselatorRoundedRect : public TesselatorRectBase
 
 	public:
 		Real GetRadius() const { return fRadius; }
-		void SetRadius( Real newValue ) { fRadius = newValue; }
+		void SetRadius( Real newValue );
+		Real GetCornerRadius( Corner corner ) const { return fCornerRadii[corner]; }
+		void SetCornerRadius( Corner corner, Real newValue );
 
 	private:
 		Real fRadius;
+		Real fCornerRadii[kNumCorners];
 };
 
 // ----------------------------------------------------------------------------

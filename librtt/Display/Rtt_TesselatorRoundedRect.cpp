@@ -11,6 +11,7 @@
 
 #include "Display/Rtt_TesselatorRoundedRect.h"
 
+#include "Display/Rtt_TesselatorLine.h"
 #include "Rtt_Matrix.h"
 #include "Rtt_Transform.h"
 
@@ -22,56 +23,88 @@ namespace Rtt
 // ----------------------------------------------------------------------------
 
 TesselatorRoundedRect::TesselatorRoundedRect( Real w, Real h, Real radius )
-:	Super( w, h ),
-	fRadius( radius )
+:	TesselatorRoundedRect( w, h, radius, radius, radius, radius )
 {
 }
 
-void
-TesselatorRoundedRect::AppendRoundedRect( ArrayVertex2& vertices, Real halfW, Real halfH, Real originalRadius )
+TesselatorRoundedRect::TesselatorRoundedRect( Real w, Real h, Real topLeftRadius, Real topRightRadius, Real bottomRightRadius, Real bottomLeftRadius )
+:	Super( w, h ),
+	fRadius( topLeftRadius )
 {
-	Real radius = Clamp( originalRadius, 0.f, Min(halfW, halfH) );
+	fCornerRadii[kTopLeftCorner] = topLeftRadius;
+	fCornerRadii[kTopRightCorner] = topRightRadius;
+	fCornerRadii[kBottomRightCorner] = bottomRightRadius;
+	fCornerRadii[kBottomLeftCorner] = bottomLeftRadius;
+}
+
+Geometry::PrimitiveType
+TesselatorRoundedRect::GetFillPrimitive() const
+{
+	return Geometry::kTriangles;
+}
+
+static int
+RoundedRectSegmentsForRadius( Real radius )
+{
 	if ( Rtt_RealIsZero( radius ) )
 	{
-		AppendRect( vertices, halfW, halfH );
+		return 0;
 	}
-	else
+
+	int result = Rtt_RealToInt( radius );
+	if ( radius > 7 )
 	{
-		// The "corners" of the rounded rect are just circle segments 
-		AppendCircleQuadrants( vertices, radius, 0 );
+		result >>= 1;
+	}
+	if ( result < 1 ) { result = 1; }
+	if ( result > 32 ) { result = 32; }
+	return result;
+}
 
-		S32 length = vertices.Length(); Rtt_ASSERT( ( length & 0x3 ) == 0 );
+static void
+AppendCorner( ArrayVertex2& vertices, Real centerX, Real centerY, Real radius, Real startAngle, Real endAngle )
+{
+	if ( Rtt_RealIsZero( radius ) )
+	{
+		Vertex2 corner = { centerX, centerY };
+		vertices.Append( corner );
+		return;
+	}
 
-		// Origin of first circle quadrant
-		Real x = halfW - radius;
-		Real y = halfH - radius;
+	const int segmentCount = RoundedRectSegmentsForRadius( radius );
+	for ( int i = 0; i <= segmentCount; i++ )
+	{
+		Real t = Rtt_RealDivNonZeroAB( Rtt_IntToReal( i ), Rtt_IntToReal( segmentCount ) );
+		Real angle = startAngle + Rtt_RealMul( endAngle - startAngle, t );
+		Vertex2 point =
+		{
+			centerX + Rtt_RealMul( radius, Rtt_RealCos( angle ) ),
+			centerY + Rtt_RealMul( radius, Rtt_RealSin( angle ) )
+		};
+		vertices.Append( point );
+	}
+}
 
-		length = length >> 2;
-		Vertex2 *pVertices = vertices.WriteAccess();
+void
+TesselatorRoundedRect::AppendRoundedRect( ArrayVertex2& vertices, Real halfW, Real halfH, bool closeLoop ) const
+{
+	Real maxRadius = Min( halfW, halfH );
+	Real topLeftRadius = Clamp( fCornerRadii[kTopLeftCorner], 0.f, maxRadius );
+	Real topRightRadius = Clamp( fCornerRadii[kTopRightCorner], 0.f, maxRadius );
+	Real bottomRightRadius = Clamp( fCornerRadii[kBottomRightCorner], 0.f, maxRadius );
+	Real bottomLeftRadius = Clamp( fCornerRadii[kBottomLeftCorner], 0.f, maxRadius );
 
-		// Position origin of each circle quadrant appropriately
-		Vertex2_Translate( pVertices, length,  x,  y ); pVertices += length;
-		Vertex2_Translate( pVertices, length, -x,  y ); pVertices += length;
-		Vertex2_Translate( pVertices, length, -x, -y ); pVertices += length;
-		Vertex2_Translate( pVertices, length,  x, -y );
+	const Real kPi = Rtt_FloatToReal( M_PI );
+	const Real kHalfPi = Rtt_RealDiv2( kPi );
+	AppendCorner( vertices, halfW - topRightRadius, -halfH + topRightRadius, topRightRadius, -kHalfPi, Rtt_REAL_0 );
+	AppendCorner( vertices, halfW - bottomRightRadius, halfH - bottomRightRadius, bottomRightRadius, Rtt_REAL_0, kHalfPi );
+	AppendCorner( vertices, -halfW + bottomLeftRadius, halfH - bottomLeftRadius, bottomLeftRadius, kHalfPi, kPi );
+	AppendCorner( vertices, -halfW + topLeftRadius, -halfH + topLeftRadius, topLeftRadius, kPi, kPi + kHalfPi );
 
-		// Circle quadrant origins (in fan order)
-		const Vertex2 origin1 =	{  x,  y };
-		const Vertex2 origin2 =	{ -x,  y };
-		const Vertex2 origin3 =	{ -x, -y };
-		const Vertex2 origin4 =	{  x, -y };
-
-		// Complete border
-		const Vertex2 p1 = { x + radius, y }; // perimeter pt of 1st quadrant, along x-direction
-		vertices.Append( p1 );
-		vertices.Append( origin1 );
-
-		// Add interior rect.
-		// NOTE: we add o1 again to create a degenerate triangle
-		vertices.Append( origin1 );
-		vertices.Append( origin2 );
-		vertices.Append( origin4 ); // [1,2,4,3] is tri strip order
-		vertices.Append( origin3 );
+	if ( closeLoop && vertices.Length() > 0 )
+	{
+		Vertex2 first = vertices[0];
+		vertices.Append( first );
 	}
 }
 
@@ -80,7 +113,16 @@ TesselatorRoundedRect::GenerateFill( ArrayVertex2& vertices )
 {
 	Rtt_ASSERT( vertices.Length() == 0 );
 
-	AppendRoundedRect( vertices, fHalfW, fHalfH, fRadius );
+	ArrayVertex2 perimeter( vertices.Allocator() );
+	AppendRoundedRect( perimeter, fHalfW, fHalfH, false );
+
+	Vertex2 center = { Rtt_REAL_0, Rtt_REAL_0 };
+	for ( int i = 0, iMax = perimeter.Length(); i < iMax; i++ )
+	{
+		vertices.Append( center );
+		vertices.Append( perimeter[i] );
+		vertices.Append( perimeter[(i + 1) % iMax] );
+	}
 }
 
 void
@@ -90,8 +132,7 @@ TesselatorRoundedRect::GenerateFillTexture( ArrayVertex2& texCoords, const Trans
 
 	Rtt_ASSERT( vertices.Length() == 0 );
 
-	// Unit circle
-	AppendRoundedRect( vertices, fHalfW, fHalfH, fRadius );
+	GenerateFill( vertices );
 	Normalize( vertices );
 	
 	Real w = Rtt_RealMul2( fHalfW );
@@ -121,28 +162,13 @@ TesselatorRoundedRect::GenerateFillTexture( ArrayVertex2& texCoords, const Trans
 void
 TesselatorRoundedRect::GenerateStroke( ArrayVertex2& vertices )
 {
-	Real radius = fRadius;
+	ArrayVertex2 perimeter( vertices.Allocator() );
+	AppendRoundedRect( perimeter, fHalfW, fHalfH, false );
 
-	AppendCircleStroke( vertices, radius, fInnerWidth, fOuterWidth, true );
-
-	Real halfW = fHalfW - radius;
-	Real halfH = fHalfH - radius;
-
-	const S32 numVertices = vertices.Length();
-
-	// An add'l 2 vertices were added at the end to close the loop
-	S32 length = numVertices - 2; Rtt_ASSERT( ( length & 0x3 ) == 0 );
-	length = length >> 2;
-	Vertex2* pVertices = vertices.WriteAccess();
-
-	// Position origin of each circle segment appropriately
-	Vertex2_Translate( pVertices, length, halfW, halfH ); pVertices += length;
-	Vertex2_Translate( pVertices, length, -halfW, halfH ); pVertices += length;
-	Vertex2_Translate( pVertices, length, -halfW, -halfH ); pVertices += length;
-	Vertex2_Translate( pVertices, length, halfW, -halfH ); pVertices += length;
-
-	// Last 2 vertices close the loop
-	Vertex2_Translate( pVertices, 2, halfW, halfH );
+	TesselatorLine tesselator( perimeter, TesselatorLine::kLoopMode );
+	tesselator.SetInnerWidth( fInnerWidth );
+	tesselator.SetOuterWidth( fOuterWidth );
+	tesselator.GenerateStroke( vertices );
 }
 
 void
@@ -154,21 +180,43 @@ TesselatorRoundedRect::GetSelfBounds( Rect& rect )
 U32
 TesselatorRoundedRect::FillVertexCount() const
 {
-	Real radius = Clamp( fRadius, 0.f, Min(fHalfW, fHalfH) );
-	if ( Rtt_RealIsZero( radius ) )
+	return PerimeterVertexCount() * 3U;
+}
+
+U32
+TesselatorRoundedRect::PerimeterVertexCount() const
+{
+	U32 result = 0U;
+	Real maxRadius = Min( fHalfW, fHalfH );
+	for ( int i = 0; i < kNumCorners; i++ )
 	{
-		return 4U;
+		Real radius = Clamp( fCornerRadii[i], 0.f, maxRadius );
+		result += Rtt_RealIsZero( radius ) ? 1U : (U32)RoundedRectSegmentsForRadius( radius ) + 1U;
 	}
-	else
-	{ 
-		return 6U + AppendCircleQuadrantsCount( radius, 0 );
-	}
+	return result;
 }
 
 U32
 TesselatorRoundedRect::StrokeVertexCount() const
 {
-	return AppendCircleStrokeCount( fRadius, true );
+	return TesselatorLine::VertexCountFromPoints( PerimeterVertexCount(), true );
+}
+
+void
+TesselatorRoundedRect::SetRadius( Real newValue )
+{
+	fRadius = newValue;
+	for ( int i = 0; i < kNumCorners; i++ )
+	{
+		fCornerRadii[i] = newValue;
+	}
+}
+
+void
+TesselatorRoundedRect::SetCornerRadius( Corner corner, Real newValue )
+{
+	fCornerRadii[corner] = newValue;
+	fRadius = fCornerRadii[kTopLeftCorner];
 }
 
 // ----------------------------------------------------------------------------

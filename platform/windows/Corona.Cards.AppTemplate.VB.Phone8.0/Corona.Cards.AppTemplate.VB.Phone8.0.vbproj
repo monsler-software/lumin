@@ -10,7 +10,7 @@
     <OutputType>Library</OutputType>
     <AppDesignerFolder>My Project</AppDesignerFolder>
     <RootNamespace>CoronaCardsAppTemplate</RootNamespace>
-    <AssemblyName>CoronaCardsAppTemplate</AssemblyName>
+    <AssemblyName>Lumin.Cards.AppTemplate</AssemblyName>
     <TargetFrameworkIdentifier>WindowsPhone</TargetFrameworkIdentifier>
     <TargetFrameworkVersion>v8.0</TargetFrameworkVersion>
     <SilverlightVersion>$(TargetFrameworkVersion)</SilverlightVersion>
@@ -19,7 +19,7 @@
     </SupportedCultures>
     <XapOutputs>true</XapOutputs>
     <GenerateSilverlightManifest>true</GenerateSilverlightManifest>
-    <XapFilename>CoronaCardsAppTemplate_$(Configuration)_$(Platform).xap</XapFilename>
+    <XapFilename>Lumin.Cards.AppTemplate_$(Configuration)_$(Platform).xap</XapFilename>
     <SilverlightManifestTemplate>My Project\AppManifest.xml</SilverlightManifestTemplate>
     <SilverlightAppEntry>CoronaCardsAppTemplate.App</SilverlightAppEntry>
     <ValidateXaml>true</ValidateXaml>
@@ -35,7 +35,7 @@
     <OutputPath>Bin\x86\Debug</OutputPath>
     <NoStdLib>true</NoStdLib>
     <NoConfig>true</NoConfig>
-    <DocumentationFile>CoronaCardsAppTemplate.xml</DocumentationFile>
+    <DocumentationFile>Lumin.Cards.AppTemplate.xml</DocumentationFile>
     <NoWarn>42016,41999,42017,42018,42019,42032,42036,42020,42021,42022</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
@@ -46,7 +46,7 @@
     <DefineTrace>true</DefineTrace>
     <NoStdLib>true</NoStdLib>
     <NoConfig>true</NoConfig>
-    <DocumentationFile>CoronaCardsAppTemplate.xml</DocumentationFile>
+    <DocumentationFile>Lumin.Cards.AppTemplate.xml</DocumentationFile>
     <NoWarn>42016,41999,42017,42018,42019,42032,42036,42020,42021,42022</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|ARM' ">
@@ -57,7 +57,7 @@
     <OutputPath>Bin\ARM\Debug</OutputPath>
     <NoStdLib>true</NoStdLib>
     <NoConfig>true</NoConfig>
-    <DocumentationFile>CoronaCardsAppTemplate.xml</DocumentationFile>
+    <DocumentationFile>Lumin.Cards.AppTemplate.xml</DocumentationFile>
     <NoWarn>42016,41999,42017,42018,42019,42032,42036,42020,42021,42022</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|ARM' ">
@@ -68,7 +68,7 @@
     <DefineTrace>true</DefineTrace>
     <NoStdLib>true</NoStdLib>
     <NoConfig>true</NoConfig>
-    <DocumentationFile>CoronaCardsAppTemplate.xml</DocumentationFile>
+    <DocumentationFile>Lumin.Cards.AppTemplate.xml</DocumentationFile>
     <NoWarn>42016,41999,42017,42018,42019,42032,42036,42020,42021,42022</NoWarn>
   </PropertyGroup>
   <PropertyGroup>

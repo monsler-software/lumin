@@ -6,7 +6,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <OutDir>$(SolutionDir)Bin\Corona\Resources\</OutDir>
-    <TargetName>CoronaLabs.Corona.Native</TargetName>
+    <TargetName>Lumin.Native</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <PostBuildEvent>

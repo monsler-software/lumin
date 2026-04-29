@@ -96,7 +96,7 @@
       <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
     <PreBuildEvent>
-      <Command>wmic path Win32_Process where "name like '%%Corona.OutputViewer.exe%%'" call Terminate</Command>
+      <Command>wmic path Win32_Process where "name like '%%Lumin.Console.exe%%'" call Terminate</Command>
     </PreBuildEvent>
     <PreBuildEvent>
       <Message>Killing off any running instances to prevent build errors</Message>

@@ -88,28 +88,28 @@
       <Link>VSIX\Redist\CommonConfiguration\x86\almixer.dll</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\Corona.Component.Library\Release\ARM\Corona.Component.Library.Phone8.0\CoronaLabs.Corona.Component.dll">
-      <Link>VSIX\Redist\CommonConfiguration\Arm\CoronaLabs.Corona.Component.dll</Link>
+    <Content Include="..\Corona.Component.Library\Release\ARM\Corona.Component.Library.Phone8.0\Lumin.Component.dll">
+      <Link>VSIX\Redist\CommonConfiguration\Arm\Lumin.Component.dll</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\Corona.Component.Library\Release\Win32\Corona.Component.Library.Phone8.0\CoronaLabs.Corona.Component.dll">
-      <Link>VSIX\Redist\CommonConfiguration\x86\CoronaLabs.Corona.Component.dll</Link>
+    <Content Include="..\Corona.Component.Library\Release\Win32\Corona.Component.Library.Phone8.0\Lumin.Component.dll">
+      <Link>VSIX\Redist\CommonConfiguration\x86\Lumin.Component.dll</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\Corona.Controls.DotNet.Library.Phone8.0\Bin\ARM\Release\CoronaLabs.Corona.Controls.DotNet.dll">
-      <Link>VSIX\References\CommonConfiguration\neutral\CoronaLabs.Corona.Controls.DotNet.dll</Link>
+    <Content Include="..\Corona.Controls.DotNet.Library.Phone8.0\Bin\ARM\Release\Lumin.Controls.DotNet.dll">
+      <Link>VSIX\References\CommonConfiguration\neutral\Lumin.Controls.DotNet.dll</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\Corona.Documentation.Phone8.0\Bin\Intellisense\CoronaLabs.Corona.Controls.DotNet.xml">
-      <Link>VSIX\References\CommonConfiguration\neutral\CoronaLabs.Corona.Controls.DotNet.xml</Link>
+    <Content Include="..\Corona.Documentation.Phone8.0\Bin\Intellisense\Lumin.Controls.DotNet.xml">
+      <Link>VSIX\References\CommonConfiguration\neutral\Lumin.Controls.DotNet.xml</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="..\Corona.Documentation.Phone8.0\Bin\Intellisense\CoronaLabs.xml">
       <Link>VSIX\References\CommonConfiguration\neutral\CoronaLabs.xml</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\Corona.DotNet.Library\Bin\ARM\Release\CoronaLabs.Corona.DotNet.dll">
-      <Link>VSIX\References\CommonConfiguration\neutral\CoronaLabs.Corona.DotNet.dll</Link>
+    <Content Include="..\Corona.DotNet.Library\Bin\ARM\Release\Lumin.DotNet.dll">
+      <Link>VSIX\References\CommonConfiguration\neutral\Lumin.DotNet.dll</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="..\Lua.Library\Release\ARM\Lua.Library.Phone8.0\lua.dll">
@@ -164,8 +164,8 @@ REM Build Corona's libraries for the x86 and ARM architectures.
   </PropertyGroup>
   <PropertyGroup>
     <PostBuildEvent>REM Zip up and digitally sign the Extension SDK.
-"$(SolutionDir)Build.Tools\7za" a -tzip -r -y "$(TargetDir)CoronaLabs.Corona.Framework.WindowsPhone.vsix" "$(TargetDir)VSIX\*.*"
-"$(SolutionDir)VsixSigner\Bin\VsixSigner" "$(SolutionDir)Build.Tools\CoronaLabsInc.pfx" "zxcvbnm,./" "$(TargetDir)CoronaLabs.Corona.Framework.WindowsPhone.vsix"
+"$(SolutionDir)Build.Tools\7za" a -tzip -r -y "$(TargetDir)Lumin.Framework.WindowsPhone.vsix" "$(TargetDir)VSIX\*.*"
+"$(SolutionDir)VsixSigner\Bin\VsixSigner" "$(SolutionDir)Build.Tools\CoronaLabsInc.pfx" "zxcvbnm,./" "$(TargetDir)Lumin.Framework.WindowsPhone.vsix"
 
 REM Copy the Extension SDK directory to the following directory so that our app templates can use this SDK
 REM without having to install it into Visual Studio. This allows automated builds to work.

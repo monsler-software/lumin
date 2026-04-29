@@ -361,7 +361,7 @@ int wmain( int argc, const wchar_t *argv[], wchar_t *envp[] )
 	std::wstring commandLineString;
 	commandLineString = L'\"';
 	commandLineString += applicationPath.c_str();
-	commandLineString += L"Corona Simulator.exe\" -debug -singleton -no-console";
+	commandLineString += L"Lumin.Simulator.exe\" -debug -singleton -no-console";
 	if (!mainLuaFilePath.empty())
 	{
 		commandLineString += L" \"";

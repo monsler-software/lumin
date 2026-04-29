@@ -982,9 +982,20 @@ DisplayLibrary::newRoundedRect( lua_State *L )
     Real y = luaL_checkreal( L, nextArg++ );
     Real w = luaL_checkreal( L, nextArg++ );
     Real h = luaL_checkreal( L, nextArg++ );
-    Real r = luaL_checkreal( L, nextArg++ );
+    Real topLeftRadius = luaL_checkreal( L, nextArg++ );
+    Real topRightRadius = topLeftRadius;
+    Real bottomRightRadius = topLeftRadius;
+    Real bottomLeftRadius = topLeftRadius;
+    if ( lua_isnumber( L, nextArg )
+         && lua_isnumber( L, nextArg + 1 )
+         && lua_isnumber( L, nextArg + 2 ) )
+    {
+        topRightRadius = luaL_checkreal( L, nextArg++ );
+        bottomRightRadius = luaL_checkreal( L, nextArg++ );
+        bottomLeftRadius = luaL_checkreal( L, nextArg++ );
+    }
 
-	ShapePath *path = ShapePath::NewRoundedRect( display.GetAllocator(), w, h, r );
+	ShapePath *path = ShapePath::NewRoundedRect( display.GetAllocator(), w, h, topLeftRadius, topRightRadius, bottomRightRadius, bottomLeftRadius );
 
     ShapeObject *v = roundedRectFactory( display.GetAllocator(), path );
 

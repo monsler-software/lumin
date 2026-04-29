@@ -6,7 +6,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <OutDir>$(SolutionDir)Bin\AppTemplates\Win32\</OutDir>
-    <TargetName>Corona.App</TargetName>
+    <TargetName>Lumin.App</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -20,7 +20,7 @@ if exist "$(IntDir)AppTemplate" (
 mkdir "$(IntDir)AppTemplate"
 copy "$(TargetPath)" "$(IntDir)AppTemplate" /Y
 copy "$(SolutionDir)Bin\Corona\ALmixer.dll" "$(IntDir)AppTemplate" /Y
-copy "$(SolutionDir)Bin\Corona\CoronaLabs.Corona.Native.dll" "$(IntDir)AppTemplate" /Y
+copy "$(SolutionDir)Bin\Corona\Lumin.Native.dll" "$(IntDir)AppTemplate" /Y
 copy "$(SolutionDir)Bin\Corona\lua.dll" "$(IntDir)AppTemplate" /Y
 copy "$(SolutionDir)Bin\Corona\OpenAL32.dll" "$(IntDir)AppTemplate" /Y
 copy "$(SolutionDir)Bin\Corona\pthreads.dll" "$(IntDir)AppTemplate" /Y

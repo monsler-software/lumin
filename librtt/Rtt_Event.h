@@ -124,7 +124,6 @@ class ErrorEvent : public VirtualEvent
 // Immediately broadcast to "Runtime"
 class FrameEvent : public VirtualEvent
 {
-	// TODO: Add notion of current time or time since last frame event?
 	public:
 		typedef VirtualEvent Super;
 
