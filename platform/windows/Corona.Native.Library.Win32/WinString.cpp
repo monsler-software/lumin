@@ -12,6 +12,34 @@
 #include "WinFile.h"
 #include <string>
 
+namespace
+{
+	struct TextConversion
+	{
+		UINT CodePage;
+		DWORD Flags;
+		int WideCharacterCount;
+	};
+
+	TextConversion GetTextConversion(const char* text, int byteCount)
+	{
+		TextConversion conversion { CP_UTF8, MB_ERR_INVALID_CHARS, 0 };
+		if (text && (byteCount > 0))
+		{
+			conversion.WideCharacterCount = ::MultiByteToWideChar(
+					conversion.CodePage, conversion.Flags, text, byteCount, nullptr, 0);
+			if (conversion.WideCharacterCount <= 0)
+			{
+				conversion.CodePage = CP_ACP;
+				conversion.Flags = 0;
+				conversion.WideCharacterCount = ::MultiByteToWideChar(
+						conversion.CodePage, conversion.Flags, text, byteCount, nullptr, 0);
+			}
+		}
+		return conversion;
+	}
+}
+
 
 WinString::WinString()
 :	mBuffer(nullptr),
@@ -252,7 +280,12 @@ void WinString::Append(const char *text)
 	{
 		currentLength = _tcsclen(mBuffer);
 	}
-	conversionLength = ::MultiByteToWideChar(CP_UTF8, 0, text, textLength + 1, nullptr, 0) - 1; // Subtract NULL char.
+	auto conversion = GetTextConversion(text, textLength + 1);
+	conversionLength = conversion.WideCharacterCount - 1; // Subtract NULL char.
+	if (conversionLength < 0)
+	{
+		return;
+	}
 
 	// Expand this object's string buffer to make room for the text to be appended.
 	if ((currentLength + conversionLength) >= mBufferNumChars)
@@ -263,7 +296,9 @@ void WinString::Append(const char *text)
 	// Append the given text, converted to wchar.
 	// The UTF8/ASCII string is not being appended, so clear it. It will be rebuilt on demand.
 	ResetUTF8();
-	::MultiByteToWideChar(CP_UTF8, 0, text, textLength + 1, &mBuffer[currentLength], mBufferNumChars);
+	::MultiByteToWideChar(
+			conversion.CodePage, conversion.Flags, text, textLength + 1,
+			&mBuffer[currentLength], mBufferNumChars - currentLength);
 }
 
 // Appends a portion of the given string to this object's string. Will automatically append a NULL
@@ -285,7 +320,12 @@ void WinString::Append(const char *text, int startIndex, int charCount)
 	{
 		currentLength = _tcsclen(mBuffer);
 	}
-	conversionLength = ::MultiByteToWideChar(CP_UTF8, 0, text + startIndex, charCount, nullptr, 0);
+	auto conversion = GetTextConversion(text + startIndex, charCount);
+	conversionLength = conversion.WideCharacterCount;
+	if (conversionLength <= 0)
+	{
+		return;
+	}
 
 	// Expand this object's string buffer to make room for the text to be appended.
 	if ((currentLength + conversionLength) >= mBufferNumChars)
@@ -297,7 +337,8 @@ void WinString::Append(const char *text, int startIndex, int charCount)
 	// The UTF8/ASCII string is not being appended, so clear it. It will be rebuilt on demand.
 	ResetUTF8();
 	::MultiByteToWideChar(
-				CP_UTF8, 0, text + startIndex, charCount, &mBuffer[currentLength], mBufferNumChars);
+				conversion.CodePage, conversion.Flags, text + startIndex, charCount,
+				&mBuffer[currentLength], mBufferNumChars - currentLength);
 	mBuffer[currentLength + conversionLength] = TCHAR('\0');
 }
 

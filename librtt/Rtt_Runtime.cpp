@@ -899,9 +899,9 @@ Runtime::ReadConfig( lua_State *L )
 	Rtt_ASSERT( lua_istable( L, -1 ) );
 
 	lua_getfield( L, -1, "multisample" );
-	if ( lua_toboolean( L, -1 ) != 0 )
+	if ( ! lua_isnil( L, -1 ) )
 	{
-		fDisplay->SetAntialiased( true );
+		fDisplay->SetAntialiased( lua_toboolean( L, -1 ) != 0 );
 	}
 	lua_pop( L, 1 );
 

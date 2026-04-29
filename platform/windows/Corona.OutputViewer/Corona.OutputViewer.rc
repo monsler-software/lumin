@@ -139,8 +139,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,1
- PRODUCTVERSION 1,0,0,1
+ FILEVERSION 26,1,0,0
+ PRODUCTVERSION 26,1,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -155,14 +155,14 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "Corona Labs Inc."
+            VALUE "CompanyName", "Lumin"
             VALUE "FileDescription", "Lumin Console"
-            VALUE "FileVersion", "1.0.0.2"
+            VALUE "FileVersion", "26.1.0.0"
             VALUE "InternalName", "Lumin Console"
-            VALUE "LegalCopyright", "Copyright © 2010-2018 Corona Labs Inc."
+            VALUE "LegalCopyright", "Copyright (C) 2026 Lumin"
             VALUE "OriginalFilename", "Lumin.Console.exe"
             VALUE "ProductName", "Lumin Console"
-            VALUE "ProductVersion", "1.0.0.1"
+            VALUE "ProductVersion", "26.1.0.0"
         END
     END
     BLOCK "VarFileInfo"
@@ -197,7 +197,7 @@ BEGIN
         END
         MENUITEM "Online &Documentation...",    ID_HELP
         MENUITEM SEPARATOR
-        MENUITEM "&About Corona Console...",     ID_APP_ABOUT
+        MENUITEM "&About Lumin Console...",      ID_APP_ABOUT
     END
 END
 
@@ -209,21 +209,21 @@ END
 
 STRINGTABLE
 BEGIN
-    IDR_MAINFRAME           "Corona Console"
+    IDR_MAINFRAME           "Lumin Console"
     ID_STATUSBAR_ERROR_COUNT "Errors: 0"
     ID_STATUSBAR_WARNING_COUNT "Warnings: 0"
 END
 
 STRINGTABLE
 BEGIN
-    AFX_IDS_APP_TITLE       "Corona Console"
+    AFX_IDS_APP_TITLE       "Lumin Console"
     AFX_IDS_IDLEMESSAGE     " "
 END
 
 STRINGTABLE
 BEGIN
     ID_APP_ABOUT            "View this application's information such as version and copyright.\nAbout"
-    ID_HELP                 "Display the Corona's online documentation."
+    ID_HELP                 "Display Lumin online documentation."
 END
 
 STRINGTABLE

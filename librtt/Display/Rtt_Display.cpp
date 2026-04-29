@@ -213,7 +213,11 @@ Display::Display( Runtime& owner )
   fObjectFactories( LUA_REFNIL ),
   fFactoryFunc( NULL ),
 	fDrawMode( kDefaultDrawMode ),
+#if defined( Rtt_WIN_ENV )
+	fIsAntialiased( true ),
+#else
 	fIsAntialiased( false ),
+#endif
 	fIsCollecting( false ),
 	fIsRestricted( false ),
 	fAllowFeatureResult( false ), // When IsRestricted(), default to *not* allowing.

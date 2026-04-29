@@ -262,6 +262,11 @@ void RenderSurfaceControl::CreateContext(const Params & params)
 		// Load OpenGL extensions.
 		glewInit();
 
+		if (multisampleTestResult.IsSupported)
+		{
+			::glEnable(GL_MULTISAMPLE);
+		}
+
 		// Fetch the OpenGL driver's version.
 		const char* versionString = (const char*)glGetString(GL_VERSION);
 		fRendererVersion.SetString(versionString);

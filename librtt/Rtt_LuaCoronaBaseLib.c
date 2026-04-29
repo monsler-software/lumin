@@ -17,6 +17,7 @@
 
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "lua.h"
 #include "lauxlib.h"
 #include "Core/Rtt_Config.h"
@@ -88,6 +89,60 @@ static int Rtt_LuaCoronaBaseLib_print(lua_State *L)
 
 #include "Core\Rtt_Assert.h"
 #include <windows.h>
+
+static void Rtt_LuaCoronaBaseLib_OutputDebugStringUtf8(const char *message)
+{
+	int utf16Length;
+	UINT codePage;
+	DWORD flags;
+	wchar_t stackBuffer[512];
+	wchar_t *utf16Message;
+
+	if (!message)
+	{
+		return;
+	}
+
+	codePage = CP_UTF8;
+	flags = MB_ERR_INVALID_CHARS;
+	utf16Length = MultiByteToWideChar(codePage, flags, message, -1, NULL, 0);
+	if (utf16Length <= 0)
+	{
+		codePage = CP_ACP;
+		flags = 0;
+		utf16Length = MultiByteToWideChar(codePage, flags, message, -1, NULL, 0);
+	}
+	if (utf16Length <= 0)
+	{
+		OutputDebugStringA(message);
+		return;
+	}
+
+	utf16Message = stackBuffer;
+	if (utf16Length > (int)(sizeof(stackBuffer) / sizeof(stackBuffer[0])))
+	{
+		utf16Message = (wchar_t*)malloc(utf16Length * sizeof(wchar_t));
+		if (!utf16Message)
+		{
+			OutputDebugStringA(message);
+			return;
+		}
+	}
+
+	if (MultiByteToWideChar(codePage, flags, message, -1, utf16Message, utf16Length) > 0)
+	{
+		OutputDebugStringW(utf16Message);
+	}
+	else
+	{
+		OutputDebugStringA(message);
+	}
+
+	if (utf16Message != stackBuffer)
+	{
+		free(utf16Message);
+	}
+}
 
 static int Rtt_LuaCoronaBaseLib_print(lua_State *L)
 {
@@ -212,7 +267,7 @@ static int Rtt_LuaCoronaBaseLib_print(lua_State *L)
 #else
 		if (IsDebuggerPresent())
 		{
-			OutputDebugStringA(stringPointer);
+			Rtt_LuaCoronaBaseLib_OutputDebugStringUtf8(stringPointer);
 		}
 		fwrite(stringPointer, sizeof(char), stringLength, stdout);
 		fflush(stdout);

@@ -1123,14 +1123,12 @@ void MainFrame::OnAppAbout()
 {
 	// Display an "About" dialog showing version and copyright information.
 	WinString message;
-	message.Append(L"Corona Console\n\n");
-	message.Append(L"Build: ");
-	message.Append(Rtt_MACRO_TO_STRING(Rtt_BUILD_REVISION));
-	message.Append(L" (");
-	message.Append(Rtt_STRING_BUILD_DATE);
-	message.Append(L")\r\n\r\n");
+	message.Append(L"Lumin Console\n\n");
+	message.Append(L"Version: ");
+	message.Append(Rtt_STRING_VERSION);
+	message.Append(L"\r\n\r\n");
 	message.Append(Interop::ApplicationServices::GetCopyrightString());
-	MessageBoxW(message.GetUTF16(), L"About Corona Console", MB_ICONINFORMATION | MB_OK);
+	MessageBoxW(message.GetUTF16(), L"About Lumin Console", MB_ICONINFORMATION | MB_OK);
 }
 
 void MainFrame::OnHelp()

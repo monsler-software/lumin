@@ -14,8 +14,8 @@
 
 #include "Core/Rtt_Macros.h"
 
-#define Rtt_VERSION_MAJOR	3
-#define Rtt_VERSION_MINOR	0
+#define Rtt_VERSION_MAJOR	26
+#define Rtt_VERSION_MINOR	1
 #define Rtt_VERSION_REVISION	0
 
 #define Rtt_LOCAL_BUILD_REVISION 9999
@@ -42,8 +42,8 @@
 
 #define Rtt_EXPIRATION_CUTOFF_INDIES_SIMULATOR_SKINS 1353196800
 
-// 2.1.0
-#define Rtt_STRING_VERSION	Rtt_MACRO_TO_STRING( Rtt_VERSION_MAJOR ) "." Rtt_MACRO_TO_STRING( Rtt_VERSION_MINOR ) "." Rtt_MACRO_TO_STRING( Rtt_VERSION_REVISION )
+// 26.1
+#define Rtt_STRING_VERSION	Rtt_MACRO_TO_STRING( Rtt_VERSION_MAJOR ) "." Rtt_MACRO_TO_STRING( Rtt_VERSION_MINOR )
 
 // 2010.1234
 #define Rtt_STRING_BUILD	Rtt_MACRO_TO_STRING( Rtt_BUILD_YEAR ) "." Rtt_MACRO_TO_STRING( Rtt_BUILD_REVISION )
@@ -51,7 +51,7 @@
 // 2010.9.26
 #define Rtt_STRING_BUILD_DATE Rtt_MACRO_TO_STRING( Rtt_BUILD_YEAR ) "." Rtt_MACRO_TO_STRING( Rtt_BUILD_MONTH ) "." Rtt_MACRO_TO_STRING( Rtt_BUILD_DAY ) 
 
-#define Rtt_STRING_COPYRIGHT	"Copyright (C) 2009-" Rtt_MACRO_TO_STRING( Rtt_BUILD_YEAR ) "  Corona Labs Inc. and The Solar2D Community"
+#define Rtt_STRING_COPYRIGHT	"Copyright (C) 2026 Lumin"
 
 #define Rtt_STRING_CREDITS		"Walter Luh | Perry Clarke, Alex Frangeti, Sean Head, Ajay McCaleb, Tom Newman, Josh Quick, Vlad Shcherban, Michael Wallar"
 

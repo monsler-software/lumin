@@ -50,13 +50,9 @@ BOOL CAboutDlg::OnInitDialog()
 	CDialog::OnInitDialog();
 
 	// Set up SDK version label.
-	WinString buildVersion;
-	WinString buildDate;
-	CString fullVersionString;
-	buildVersion.SetUTF8( Rtt_STRING_BUILD );
-	buildDate.SetUTF8( Rtt_STRING_BUILD_DATE );
-	fullVersionString.Format( _T("%s (%s)"), buildVersion.GetTCHAR(), buildDate.GetTCHAR() );
-	GetDlgItem(IDC_ABOUT_VERSION)->SetWindowText(fullVersionString);
+	WinString versionString;
+	versionString.SetUTF8( Rtt_STRING_VERSION );
+	GetDlgItem(IDC_ABOUT_VERSION)->SetWindowText(versionString.GetTCHAR());
 
 	// Set up copyright label.
 	TCHAR appFileName[512];

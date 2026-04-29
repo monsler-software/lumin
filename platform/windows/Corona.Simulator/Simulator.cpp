@@ -95,15 +95,15 @@ CSimulatorApp::CSimulatorApp()
 BOOL CSimulatorApp::InitInstance()
 {
 	// Load the simulator version of the Corona library, which is only used by plugins to link against by name.
-	// This is a thin proxy DLL which forwards Solar2D's public APIs to this EXE's statically linked Solar2D APIs.
+	// This is a thin proxy DLL which forwards Lumin's public APIs to this EXE's statically linked Lumin APIs.
 	// This ensures that plugins link with the simulator's library and not the non-simulator version of the library.
 	CString coronaLibraryPath = GetApplicationDir() + _T("\\Resources\\Lumin.Native.dll");
 	if (!Rtt_VERIFY(::LoadLibrary(coronaLibraryPath)))
 	{
 		CString message =
-			_T("Failed to load the Solar2D Simulator's library.\r\n")
-			_T("This might mean that your Solar2D installation is corrupted.\r\n")
-			_T("You may be able to fix this by re-installing the Solar2D.");
+			_T("Failed to load the Lumin Simulator's library.\r\n")
+			_T("This might mean that your Lumin installation is corrupted.\r\n")
+			_T("You may be able to fix this by re-installing Lumin.");
 		AfxMessageBox(message, MB_OK | MB_ICONEXCLAMATION);
 		return FALSE;
 	}
@@ -140,7 +140,7 @@ BOOL CSimulatorApp::InitInstance()
 		}
 	}
 	// Initialize WinGlobalProperties object which mirrors theApp properties
-	// Make sure this is done before accessing any Solar2D functions
+	// Make sure this is done before accessing any Lumin functions
 	WinString strRegistryKey, strRegistryProfile, strResourcesDir;
 	strRegistryKey.SetTCHAR(m_pszRegistryKey);
 	strRegistryProfile.SetTCHAR(m_pszProfileName);
@@ -156,7 +156,7 @@ BOOL CSimulatorApp::InitInstance()
 	if (!lastRunSucceeded)
 	{
 		CString message =
-			_T("Solar2D Simulator crashed last time it was run\n\n")
+			_T("Lumin Simulator crashed last time it was run\n\n")
 			_T("This can happen because Windows or the video driver need to be updated.  ")
 			_T("If it crashes again, make sure the software for your video card is up to date (you ")
 			_T("may need to visit the manufacturer's web site to check this) and ensure that all ")
@@ -165,7 +165,7 @@ BOOL CSimulatorApp::InitInstance()
 
 		SHMessageBoxCheck(NULL,
 			message,
-			TEXT("Solar2D Simulator"),
+			TEXT("Lumin Simulator"),
 			MB_OK | MB_ICONEXCLAMATION,
 			IDOK,
 			L"CoronaShowCrashWarning");
@@ -225,7 +225,7 @@ BOOL CSimulatorApp::InitInstance()
 				{
 					// *** The app is currently displaying a modal dialog. ***
 
-					// Stop the app's currently running Solar2D project. Avoids file locking issues, like with fonts.
+					// Stop the app's currently running Lumin project. Avoids file locking issues, like with fonts.
 					::PostMessage(windowHandle, WM_COMMAND, ID_FILE_CLOSE, 0);
 
 					// Send a quit message to exit the app. (Not a clean way to exit an app.)
@@ -266,12 +266,12 @@ BOOL CSimulatorApp::InitInstance()
 	// Display a logging window, if enabled.
 	if (m_isConsoleEnabled)
 	{
-		// Use the following Solar2D application as our logging window.
+		// Use the following Lumin application as our logging window.
 		WinString outputViewerFilePath(GetApplicationDir());
 		WinString outputViewerArgs;
 
 		outputViewerArgs.Format("/parentProcess:%ld", ::GetCurrentProcessId());
-		outputViewerArgs.Append(L" /disableClose /windowName:\"Corona Simulator Console\"");
+		outputViewerArgs.Append(L" /disableClose /windowName:\"Lumin Simulator Console\"");
 
 		outputViewerFilePath.Append(L"\\Lumin.Console.exe");
 		Interop::Ipc::Process::LaunchSettings launchSettings{};
@@ -334,8 +334,8 @@ BOOL CSimulatorApp::InitInstance()
     m_pDocManager = new CSimDocManager();
 
 	// Register the simulator's document template.
-	// This is used to manage an open Solar2D project with an MFC SDI document/view interface.
-	// Note: This custom doc template allows the simulator to open Solar2D projects by directory or "main.lua".
+	// This is used to manage an open Lumin project with an MFC SDI document/view interface.
+	// Note: This custom doc template allows the simulator to open Lumin projects by directory or "main.lua".
 	auto pDocTemplate = new CSimulatorDocTemplate();
 	if (!pDocTemplate)
 	{
@@ -344,7 +344,7 @@ BOOL CSimulatorApp::InitInstance()
 	AddDocTemplate(pDocTemplate);
 
     // Do this before any of the ways app can exit (including not authorized)
-	printf("\nSolar2D Simulator %d.%d (%s %s)\n\n", Rtt_BUILD_YEAR, Rtt_BUILD_REVISION, __DATE__, __TIME__);
+	printf("\nLumin Simulator %s (%s %s)\n\n", Rtt_STRING_VERSION, __DATE__, __TIME__);
 
 	// Load user preferences from registry
     // Initialize member variables used to write out preferences
@@ -377,7 +377,7 @@ BOOL CSimulatorApp::InitInstance()
 		}
 	}
 
-	// If a Solar2D project directory was provided at the command line, then append a "main.lua" file to the path.
+	// If a Lumin project directory was provided at the command line, then append a "main.lua" file to the path.
 	if (!cmdInfo.m_strFileName.IsEmpty() && ::PathIsDirectory(cmdInfo.m_strFileName))
 	{
 		TCHAR mainLuaFilePath[2048];

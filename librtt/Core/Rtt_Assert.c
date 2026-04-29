@@ -37,12 +37,71 @@ Rtt_EXPORT_BEGIN
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 
 #if defined( Rtt_ANDROID_ENV )
 #include <android/log.h>
 #elif defined( Rtt_WIN_ENV ) || defined( Rtt_POWERVR_ENV )
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
+
+#if defined( Rtt_WIN_ENV ) || defined( Rtt_POWERVR_ENV )
+	#if defined( _MSC_VER )
+		#define Rtt_VA_COPY( dst, src ) ( (dst) = (src) )
+	#else
+		#define Rtt_VA_COPY( dst, src ) va_copy( (dst), (src) )
+	#endif
+
+static void
+Rtt_OutputDebugStringUtf8( const char *message )
+{
+	if ( ! message )
+	{
+		return;
+	}
+
+	int utf16Length = MultiByteToWideChar( CP_UTF8, MB_ERR_INVALID_CHARS, message, -1, NULL, 0 );
+	UINT codePage = CP_UTF8;
+	DWORD flags = MB_ERR_INVALID_CHARS;
+	if ( utf16Length <= 0 )
+	{
+		codePage = CP_ACP;
+		flags = 0;
+		utf16Length = MultiByteToWideChar( codePage, flags, message, -1, NULL, 0 );
+	}
+	if ( utf16Length <= 0 )
+	{
+		OutputDebugStringA( message );
+		return;
+	}
+
+	wchar_t stackBuffer[512];
+	wchar_t *utf16Message = stackBuffer;
+	if ( utf16Length > (int)( sizeof( stackBuffer ) / sizeof( stackBuffer[0] ) ) )
+	{
+		utf16Message = (wchar_t*)malloc( utf16Length * sizeof( wchar_t ) );
+		if ( ! utf16Message )
+		{
+			OutputDebugStringA( message );
+			return;
+		}
+	}
+
+	if ( MultiByteToWideChar( codePage, flags, message, -1, utf16Message, utf16Length ) > 0 )
+	{
+		OutputDebugStringW( utf16Message );
+	}
+	else
+	{
+		OutputDebugStringA( message );
+	}
+
+	if ( utf16Message != stackBuffer )
+	{
+		free( utf16Message );
+	}
+}
 #endif
 
 
@@ -129,7 +188,15 @@ Rtt_VLogException(const char *format, va_list ap)
 		// For best performance, attempt to use a small string buffer on the stack.
 		char stringBufferOnStack[512];
 		char* stringPointer = stringBufferOnStack;
-		size_t stringLength = _vscprintf(format, ap);
+		va_list countArguments;
+		Rtt_VA_COPY( countArguments, ap );
+		int measuredStringLength = _vscprintf(format, countArguments);
+		va_end( countArguments );
+		if ( measuredStringLength < 0 )
+		{
+			return result;
+		}
+		size_t stringLength = (size_t)measuredStringLength;
 		size_t bufferSize = stringLength + 2;	// Assume we need to append:  \n\0
 		if (bufferSize > sizeof(stringBufferOnStack))
 		{
@@ -144,7 +211,12 @@ Rtt_VLogException(const char *format, va_list ap)
 		}
 
 		// Format and output the string.
-		result = vsnprintf_s(stringPointer, bufferSize, stringLength, format, ap);
+		{
+			va_list formatArguments;
+			Rtt_VA_COPY( formatArguments, ap );
+			result = vsnprintf_s(stringPointer, bufferSize, stringLength, format, formatArguments);
+			va_end( formatArguments );
+		}
 		if (result >= 0)
 		{
 			// Update our string length with number of characters actually copied to the buffer.
@@ -202,7 +274,7 @@ Rtt_VLogException(const char *format, va_list ap)
 #else
 			if (IsDebuggerPresent())
 			{
-				OutputDebugStringA(stringPointer);
+				Rtt_OutputDebugStringUtf8(stringPointer);
 			}
 			fputs(stringPointer, stdout);
 			fflush(stdout);
