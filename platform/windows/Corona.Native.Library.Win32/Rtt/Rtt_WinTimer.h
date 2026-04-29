@@ -65,6 +65,8 @@ class WinTimer : public PlatformTimer
 		static VOID CALLBACK OnTimerElapsed(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
 
 		static void CALLBACK OnHighResolutionTimerElapsed(UINT timerId, UINT messageId, DWORD_PTR userData, DWORD_PTR param1, DWORD_PTR param2);
+		static LRESULT CALLBACK OnHighResolutionTimerMessage(HWND hwnd, UINT messageId, WPARAM wParam, LPARAM lParam);
+		static HWND CreateHighResolutionTimerWindow();
 
 		/// <summary>
 		///  <para>Compares the given tick values returned by ::timeGetTime().</para>
@@ -86,6 +88,7 @@ class WinTimer : public PlatformTimer
 		UINT_PTR fTimerPointer;
 		UINT_PTR fTimerID;
 		MMRESULT fHighResolutionTimerID;
+		HWND fHighResolutionMessageWindowHandle;
 		volatile LONG fHighResolutionTimerMessagePending;
 		U32 fIntervalInMilliseconds;
 		S32 fNextIntervalTimeInTicks;

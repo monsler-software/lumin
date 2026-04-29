@@ -16,6 +16,12 @@
 namespace Rtt
 {
 
+namespace
+{
+	const wchar_t kHighResolutionTimerWindowClassName[] = L"RttWinTimerHighResolutionMessageWindow";
+	const UINT kHighResolutionTimerMessage = WM_APP + 0x2643;
+}
+
 std::unordered_map<UINT_PTR, Rtt::WinTimer *> WinTimer::sTimerMap;
 UINT_PTR WinTimer::sMostRecentTimerID;
 std::mutex WinTimer::sTimerMutex;
@@ -28,6 +34,7 @@ WinTimer::WinTimer(MCallback& callback, HWND windowHandle)
 	fTimerPointer = 0;
 	fIntervalInMilliseconds = 10;
 	fHighResolutionTimerID = 0;
+	fHighResolutionMessageWindowHandle = NULL;
 	fHighResolutionTimerMessagePending = 0;
 	fNextIntervalTimeInTicks = 0;
 }
@@ -61,13 +68,19 @@ void WinTimer::Start()
 		sTimerMap[fTimerID] = this;
 	}
 
-	if (fWindowHandle && (fIntervalInMilliseconds < 16U))
+	if (fIntervalInMilliseconds < 16U)
 	{
-		::timeBeginPeriod(1);
-		fHighResolutionTimerID = ::timeSetEvent(timerInterval, 1, WinTimer::OnHighResolutionTimerElapsed, (DWORD_PTR)fTimerID, TIME_PERIODIC | TIME_CALLBACK_FUNCTION);
-		if (!fHighResolutionTimerID)
+		fHighResolutionMessageWindowHandle = WinTimer::CreateHighResolutionTimerWindow();
+		if (fHighResolutionMessageWindowHandle)
 		{
-			::timeEndPeriod(1);
+			::timeBeginPeriod(1);
+			fHighResolutionTimerID = ::timeSetEvent(timerInterval, 1, WinTimer::OnHighResolutionTimerElapsed, (DWORD_PTR)fTimerID, TIME_PERIODIC | TIME_CALLBACK_FUNCTION);
+			if (!fHighResolutionTimerID)
+			{
+				::timeEndPeriod(1);
+				::DestroyWindow(fHighResolutionMessageWindowHandle);
+				fHighResolutionMessageWindowHandle = NULL;
+			}
 		}
 	}
 
@@ -93,6 +106,7 @@ void WinTimer::Stop()
 
 	UINT_PTR timerID = fTimerID;
 	MMRESULT highResolutionTimerID = fHighResolutionTimerID;
+	HWND highResolutionMessageWindowHandle = fHighResolutionMessageWindowHandle;
 	UINT_PTR timerPointer = fTimerPointer;
 
 	{
@@ -109,8 +123,14 @@ void WinTimer::Stop()
 	{
 		::KillTimer(fWindowHandle, timerID);
 	}
+	if (highResolutionMessageWindowHandle)
+	{
+		::DestroyWindow(highResolutionMessageWindowHandle);
+	}
 
 	fHighResolutionTimerID = 0;
+	fHighResolutionMessageWindowHandle = NULL;
+	fHighResolutionTimerMessagePending = 0;
 	fTimerPointer = 0;
 	fTimerID = 0;
 }
@@ -180,15 +200,43 @@ void CALLBACK WinTimer::OnHighResolutionTimerElapsed(UINT timerId, UINT messageI
 		auto timer = sTimerMap.find(timerID);
 		if (sTimerMap.end() != timer)
 		{
-			windowHandle = timer->second->fWindowHandle;
+			windowHandle = timer->second->fHighResolutionMessageWindowHandle;
 			shouldPostMessage = (0 == ::InterlockedCompareExchange(&timer->second->fHighResolutionTimerMessagePending, 1, 0));
 		}
 	}
 
 	if (windowHandle && shouldPostMessage)
 	{
-		::PostMessage(windowHandle, WM_TIMER, timerID, (LPARAM)WinTimer::OnTimerElapsed);
+		::PostMessage(windowHandle, kHighResolutionTimerMessage, timerID, 0);
 	}
+}
+
+LRESULT CALLBACK WinTimer::OnHighResolutionTimerMessage(HWND hwnd, UINT messageId, WPARAM wParam, LPARAM lParam)
+{
+	if (kHighResolutionTimerMessage == messageId)
+	{
+		WinTimer::OnTimerElapsed(hwnd, WM_TIMER, (UINT_PTR)wParam, (DWORD)::timeGetTime());
+		return 0;
+	}
+	return ::DefWindowProc(hwnd, messageId, wParam, lParam);
+}
+
+HWND WinTimer::CreateHighResolutionTimerWindow()
+{
+	HINSTANCE moduleInstance = ::GetModuleHandle(NULL);
+	WNDCLASSW windowClass = {};
+	windowClass.lpfnWndProc = WinTimer::OnHighResolutionTimerMessage;
+	windowClass.hInstance = moduleInstance;
+	windowClass.lpszClassName = kHighResolutionTimerWindowClassName;
+	if (!::RegisterClassW(&windowClass) && (ERROR_CLASS_ALREADY_EXISTS != ::GetLastError()))
+	{
+		return NULL;
+	}
+
+	return ::CreateWindowExW(
+		0, kHighResolutionTimerWindowClassName, L"", 0,
+		0, 0, 0, 0,
+		HWND_MESSAGE, NULL, moduleInstance, NULL);
 }
 
 S32 WinTimer::CompareTicks(S32 x, S32 y)
