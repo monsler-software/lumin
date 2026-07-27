@@ -18,6 +18,7 @@
 #include "Renderer/Rtt_GLProgram.h"
 #include "Renderer/Rtt_GLTexture.h"
 #include "Renderer/Rtt_Program.h"
+#include "Renderer/Rtt_RendererCapabilities.h"
 #include "Renderer/Rtt_Texture.h"
 #include "Renderer/Rtt_Uniform.h"
 #include "Display/Rtt_ShaderData.h"
@@ -144,8 +145,23 @@ namespace Rtt
 
 // ----------------------------------------------------------------------------
 
+// Answers the backend-neutral capability queries for OpenGL. Installed by
+// GLCommandBuffer::Initialize(), i.e. once a GL context is current: every
+// method below issues GL calls and must not run before that.
+class GLRendererCapabilities : public RendererCapabilities
+{
+    public:
+        virtual size_t GetMaxUniformVectorsCount() const;
+        virtual size_t GetMaxVertexTextureUnits() const;
+        virtual size_t GetMaxTextureSize() const;
+        virtual const char *GetString( const char *key ) const;
+        virtual bool GetSupportsHighPrecisionFragmentShaders() const;
+};
+
+static const GLRendererCapabilities kGLCapabilities;
+
 size_t
-CommandBuffer::GetMaxUniformVectorsCount()
+GLRendererCapabilities::GetMaxUniformVectorsCount() const
 {
     GLint count;
 
@@ -160,17 +176,13 @@ CommandBuffer::GetMaxUniformVectorsCount()
     count /= 4; // as vectors
 #endif
 
-    count -=    4 // kViewProjectionMatrix
-                + 3 * 4 // kMaskMatrix*, assuming 3 vectors each
-                + 2 // kTotalTime, kDeltaTime, again 1 vector each
-                + 1 // kTexelSize, ditto
-                + 1;// kContentScale, the same
+    count -= (GLint)kReservedUniformVectors;
 
     return count;
 }
 
 size_t
-CommandBuffer::GetMaxVertexTextureUnits()
+GLRendererCapabilities::GetMaxVertexTextureUnits() const
 {
     static size_t sMaxUnits = ~0; // 0 would be valid result
     
@@ -187,7 +199,7 @@ CommandBuffer::GetMaxVertexTextureUnits()
 }
 
 size_t
-CommandBuffer::GetMaxTextureSize()
+GLRendererCapabilities::GetMaxTextureSize() const
 {
     static size_t sMaxSize = 0;
     
@@ -202,36 +214,42 @@ CommandBuffer::GetMaxTextureSize()
 }
 
 const char *
-CommandBuffer::GetGlString( const char *s )
+GLRendererCapabilities::GetString( const char *key ) const
 {
-    if( Rtt_StringCompare( s, "GL_VENDOR" ) == 0 )
+    GLenum name;
+
+    if( Rtt_StringCompare( key, kVendor ) == 0 )
     {
-        return (const char *)glGetString( GL_VENDOR );
+        name = GL_VENDOR;
     }
-    else if( Rtt_StringCompare( s, "GL_RENDERER" ) == 0 )
+    else if( Rtt_StringCompare( key, kRenderer ) == 0 )
     {
-        return (const char *)glGetString( GL_RENDERER );
+        name = GL_RENDERER;
     }
-    else if( Rtt_StringCompare( s, "GL_VERSION" ) == 0 )
+    else if( Rtt_StringCompare( key, kVersion ) == 0 )
     {
-        return (const char *)glGetString( GL_VERSION );
+        name = GL_VERSION;
     }
-    else if( Rtt_StringCompare( s, "GL_SHADING_LANGUAGE_VERSION" ) == 0 )
+    else if( Rtt_StringCompare( key, kShaderVersion ) == 0 )
     {
-        return (const char *)glGetString( GL_SHADING_LANGUAGE_VERSION );
+        name = GL_SHADING_LANGUAGE_VERSION;
     }
-    else if( Rtt_StringCompare( s, "GL_EXTENSIONS" ) == 0 )
+    else if( Rtt_StringCompare( key, kExtensions ) == 0 )
     {
-        return (const char *)glGetString( GL_EXTENSIONS );
+        name = GL_EXTENSIONS;
     }
     else
     {
         return "";
     }
+
+    const char *result = (const char *)glGetString( name );
+
+    return result ? result : "";
 }
 
 bool
-CommandBuffer::GetGpuSupportsHighPrecisionFragmentShaders()
+GLRendererCapabilities::GetSupportsHighPrecisionFragmentShaders() const
 {
 #if defined( Rtt_MAC_ENV ) || defined( Rtt_WIN_DESKTOP_ENV ) || defined( Rtt_EMSCRIPTEN_ENV )|| defined( Rtt_LINUX_ENV )
 
@@ -399,10 +417,13 @@ GLCommandBuffer::Initialize()
     glEnableVertexAttribArray( Geometry::kVertexColorScaleAttribute );
     glEnableVertexAttribArray( Geometry::kVertexUserDataAttribute );
 
+    // A GL context is current from here on, so GL can answer capability queries.
+    RendererCapabilities::Set( &kGLCapabilities );
+
     InitializeFBO();
     InitializeCachedParams();
     //CacheQueryParam(kMaxTextureSize);
-    
+
     GetMaxTextureSize();
 
 }
@@ -453,6 +474,12 @@ GLCommandBuffer::Denitialize()
 #ifdef ENABLE_GPU_TIMER_QUERIES
     glDeleteQueries( kTimerQueryCount, fTimerQueries );
 #endif
+
+    // The GL context is going away; stop routing capability queries to GL.
+    if ( &RendererCapabilities::GetCurrent() == &kGLCapabilities )
+    {
+        RendererCapabilities::Set( NULL );
+    }
 }
 
 void

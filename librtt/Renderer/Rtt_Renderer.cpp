@@ -17,8 +17,20 @@
 #include "Renderer/Rtt_GPUResource.h"
 #include "Renderer/Rtt_HighPrecisionTime.h"
 #include "Renderer/Rtt_Matrix_Renderer.h"
+#include "Renderer/Rtt_GLRenderer.h"
 #include "Renderer/Rtt_Program.h"
 #include "Renderer/Rtt_RenderData.h"
+#include "Renderer/Rtt_RendererFactory.h"
+#include "Core/Rtt_String.h"
+
+#if defined( Rtt_WIN_ENV )
+	#include "Renderer/Rtt_VulkanExports.h"
+#endif
+
+#if defined( Rtt_USE_BGFX )
+	#include "Renderer/Rtt_BgfxSurfaceParams.h"
+#endif
+
 #include "Renderer/Rtt_CPUResource.h"
 #include "Renderer/Rtt_Texture.h"
 #include "Renderer/Rtt_Uniform.h"
@@ -300,11 +312,9 @@ Renderer::BeginDrawing()
 void
 Renderer::CaptureFrameBuffer( RenderingStream & stream, BufferBitmap & bitmap, S32 x_in_pixels, S32 y_in_pixels, S32 w_in_pixels, S32 h_in_pixels )
 {
-	stream.CaptureFrameBuffer( bitmap,
-		x_in_pixels,
-		y_in_pixels,
-		w_in_pixels,
-		h_in_pixels );
+	// Reading back the framebuffer is backend-specific; see GLRenderer and
+	// VulkanRenderer. Nothing sensible can be captured from here.
+	Rtt_ASSERT_NOT_IMPLEMENTED();
 }
 
 void 
@@ -1464,6 +1474,12 @@ Renderer::GetMaxTextureSize()
 }
 
 const char *
+Renderer::GetRendererString( const char *key )
+{
+    return CommandBuffer::GetRendererString( key );
+}
+
+const char *
 Renderer::GetGlString( const char *s )
 {
     return CommandBuffer::GetGlString( s );
@@ -2224,6 +2240,216 @@ Renderer::CopyExtendedIndexedTrianglesAsLines( Geometry* geometry, Geometry::Ver
         MergeVertexData( &destination, geometry->GetVertexData(), geometry->GetExtendedVertexData(), indexData[index + 2], extraCount );
         MergeVertexData( &destination, geometry->GetVertexData(), geometry->GetExtendedVertexData(), indexData[index], extraCount );
     }
+}
+
+// ----------------------------------------------------------------------------
+
+const char RendererFactory::kOpenGL[] = "glBackend";
+const char RendererFactory::kVulkan[] = "vulkanBackend";
+const char RendererFactory::kBgfx[] = "bgfxBackend";
+
+RendererFactory::Entry RendererFactory::sEntries[RendererFactory::kMaxBackends] = {};
+const char *RendererFactory::sDefaultName = RendererFactory::kOpenGL;
+
+static Renderer *
+CreateGLRenderer( Rtt_Allocator *allocator, RendererFactory::BackendContext, RendererFactory::InvalidateCallback, void * )
+{
+    return Rtt_NEW( allocator, GLRenderer( allocator ) );
+}
+
+#if defined( Rtt_WIN_ENV )
+static Renderer *
+CreateVulkanRenderer( Rtt_Allocator *allocator, RendererFactory::BackendContext context, RendererFactory::InvalidateCallback invalidate, void *display )
+{
+    return VulkanExports::CreateVulkanRenderer( allocator, context, invalidate, display );
+}
+#endif
+
+#if defined( Rtt_USE_BGFX )
+static Renderer *
+CreateBgfxRenderer( Rtt_Allocator *allocator, RendererFactory::BackendContext context, RendererFactory::InvalidateCallback, void * )
+{
+    // bgfx creates the graphics context itself, so the platform passes the
+    // window rather than a context it already made; see BgfxSurfaceParams.
+    if ( NULL == context )
+    {
+        Rtt_LogException( "ERROR: the bgfx backend needs BgfxSurfaceParams from the platform\n" );
+        return NULL;
+    }
+
+    return BgfxExports::CreateBgfxRenderer( allocator, *static_cast< const BgfxSurfaceParams * >( context ) );
+}
+#endif
+
+void
+RendererFactory::EnsureBuiltInsRegistered()
+{
+    static bool sRegistered = false;
+
+    if ( sRegistered )
+    {
+        return;
+    }
+
+    sRegistered = true; // set first: Register() must not recurse back in here
+
+#if defined( Rtt_OPENGLES )
+    // We are using OpenGL ES, so assume it's v.2.0.
+    const Program::Language kGLLanguage = Program::kOpenGL_ES_2;
+#else
+    // We are using Desktop OpenGL, so assume it's OpenGL 2.1.
+    const Program::Language kGLLanguage = Program::kOpenGL_2_1;
+#endif
+
+    Register( kOpenGL, &CreateGLRenderer, kGLLanguage );
+
+#if defined( Rtt_WIN_ENV )
+    Register( kVulkan, &CreateVulkanRenderer, Program::kVulkanGLSL );
+#endif
+
+#if defined( Rtt_USE_BGFX )
+    // bgfx compiles kernels itself, from its own dialect; see
+    // shell_default_bgfx and BgfxProgram.
+    Register( kBgfx, &CreateBgfxRenderer, Program::kBgfxSC );
+#endif
+}
+
+RendererFactory::Creator
+RendererFactory::Find( const char *name )
+{
+    for ( int i = 0; i < kMaxBackends; ++i )
+    {
+        if ( NULL == sEntries[i].fName )
+        {
+            break;
+        }
+
+        if ( Rtt_StringCompare( sEntries[i].fName, name ) == 0 )
+        {
+            return sEntries[i].fCreator;
+        }
+    }
+
+    return NULL;
+}
+
+bool
+RendererFactory::Register( const char *name, Creator creator, Program::Language language )
+{
+    if ( NULL == name || '\0' == name[0] || NULL == creator )
+    {
+        return false;
+    }
+
+    for ( int i = 0; i < kMaxBackends; ++i )
+    {
+        if ( NULL == sEntries[i].fName )
+        {
+            sEntries[i].fName = name;
+            sEntries[i].fCreator = creator;
+            sEntries[i].fLanguage = language;
+
+            return true;
+        }
+
+        if ( Rtt_StringCompare( sEntries[i].fName, name ) == 0 )
+        {
+            sEntries[i].fCreator = creator;
+            sEntries[i].fLanguage = language;
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+Program::Language
+RendererFactory::GetShaderLanguage( const char *name )
+{
+    EnsureBuiltInsRegistered();
+
+    if ( NULL == name || '\0' == name[0] )
+    {
+        name = sDefaultName;
+    }
+
+    for ( int i = 0; i < kMaxBackends && sEntries[i].fName; ++i )
+    {
+        if ( Rtt_StringCompare( sEntries[i].fName, name ) == 0 )
+        {
+            return sEntries[i].fLanguage;
+        }
+    }
+
+    // Unknown backend: Create() falls back to the default one, so report the
+    // dialect that fallback will actually consume.
+    for ( int i = 0; i < kMaxBackends && sEntries[i].fName; ++i )
+    {
+        if ( Rtt_StringCompare( sEntries[i].fName, sDefaultName ) == 0 )
+        {
+            return sEntries[i].fLanguage;
+        }
+    }
+
+    return Program::kDefault;
+}
+
+bool
+RendererFactory::IsAvailable( const char *name )
+{
+    EnsureBuiltInsRegistered();
+
+    return NULL != name && '\0' != name[0] && NULL != Find( name );
+}
+
+const char *
+RendererFactory::GetDefaultName()
+{
+    return sDefaultName;
+}
+
+void
+RendererFactory::SetDefaultName( const char *name )
+{
+    EnsureBuiltInsRegistered();
+
+    if ( NULL == name )
+    {
+        return;
+    }
+
+    // Adopt the registered spelling rather than the caller's string, which need
+    // not outlive this call.
+    for ( int i = 0; i < kMaxBackends && sEntries[i].fName; ++i )
+    {
+        if ( Rtt_StringCompare( sEntries[i].fName, name ) == 0 )
+        {
+            sDefaultName = sEntries[i].fName;
+
+            break;
+        }
+    }
+}
+
+Renderer *
+RendererFactory::Create(
+    const char *name,
+    Rtt_Allocator *allocator,
+    BackendContext context,
+    InvalidateCallback invalidate,
+    void *display )
+{
+    EnsureBuiltInsRegistered();
+
+    if ( NULL == name || '\0' == name[0] )
+    {
+        name = sDefaultName;
+    }
+
+    Creator creator = Find( name );
+
+    return creator ? creator( allocator, context, invalidate, display ) : NULL;
 }
 
 // ----------------------------------------------------------------------------

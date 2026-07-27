@@ -23,6 +23,7 @@
 
 #include "Renderer/Rtt_FormatExtensionList.h"
 #include "Renderer/Rtt_Program.h"
+#include "Renderer/Rtt_RendererFactory.h"
 #if defined( Rtt_USE_PRECOMPILED_SHADERS )
     #include "Renderer/Rtt_ShaderBinary.h"
     #include "Renderer/Rtt_ShaderBinaryVersions.h"
@@ -304,28 +305,12 @@ ShaderFactory::NewProgram(
 //    Rtt_TRACE( ( "Fragment source:\n%s\n", program->GetFragmentShaderSource() ) );
     lua_pop( L, 1 );
 
-	//TODO - move this into a delegate block, rather than extending this
 	{
-		Program::Language language;
+		// The dialect is a property of the backend, declared where the backend
+		// registers itself, so adding one does not mean extending a chain of
+		// backend-name comparisons here.
+		Program::Language language = RendererFactory::GetShaderLanguage( fBackend );
 
-		if (strcmp( fBackend, "vulkanBackend" ) == 0)
-		{
-			language = Program::kVulkanGLSL;
-		}
-
-		else
-		{
-		#if defined( Rtt_OPENGLES )
-			// We are using OpenGL ES, so assume it's v.2.0
-			// We could also look at GL_ES_VERSION_2_0 and GL_ES_VERSION_3_0.
-			language = Program::kOpenGL_ES_2;
-		#else // NOT Rtt_OPENGLES
-			// We are using Desktop OpenGL, so assume it's OpenGL 2.1
-			// We could also look at GL_VERSION_2_0 and GL_VERSION_2_1.
-			language = Program::kOpenGL_2_1;
-		#endif
-		}
-		
 		std::string header = Program::HeaderForLanguage( language, * fProgramHeader );
 		
 		if (ShaderResource::k25D == mod)

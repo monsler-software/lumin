@@ -225,6 +225,7 @@ SET( LUA_SOURCES
 	"${CORONA_ROOT}/librtt/Display/Shader/kernel_generator_stripes_gl.lua"
 	"${CORONA_ROOT}/librtt/Display/Shader/kernel_generator_sunbeams_gl.lua"
 	"${CORONA_ROOT}/librtt/Display/Shader/shell_default_gl.lua"
+	"${CORONA_ROOT}/librtt/Display/Shader/shell_default_bgfx.lua"
 	"${CORONA_ROOT}/external/lpeg/re.lua"
 	"${CORONA_ROOT}/platform/resources/linuxPackageApp.lua"
 	"${CORONA_ROOT}/platform/resources/webPackageApp.lua"
@@ -691,6 +692,7 @@ SET( SOLAR2D_SOURCES
 		${Lua2CppOutputDir}/kernel_generator_stripes_gl.cpp
 		${Lua2CppOutputDir}/kernel_generator_sunbeams_gl.cpp
 		${Lua2CppOutputDir}/shell_default_gl.cpp
+		${Lua2CppOutputDir}/shell_default_bgfx.cpp
 		${Lua2CppOutputDir}/linuxPackageApp.cpp
 		${Lua2CppOutputDir}/webPackageApp.cpp
 		${Lua2CppOutputDir}/network.cpp
@@ -1034,6 +1036,13 @@ target_compile_definitions( Solar2DBuilder PUBLIC
 
 target_link_libraries(Solar2D	dl GL z pthread openal freetype png jpeg crypto curl SDL2 ${LIBCEF})
 target_link_libraries(Solar2DSimulator	dl GL z pthread openal freetype png jpeg crypto curl SDL2 ${LIBCEF})
+
+# Optional bgfx backend; a no-op unless -DLUMIN_BGFX=ON.
+include(${CORONA_ROOT}/platform/linux/bgfx.cmake)
+if(LUMIN_BGFX)
+	lumin_target_enable_bgfx(Solar2D)
+	lumin_target_enable_bgfx(Solar2DSimulator)
+endif()
 
 # Enabling functions loaded from dlopen call a function from the Solar2DSimulator
 target_link_options(Solar2D BEFORE PUBLIC -export-dynamic)

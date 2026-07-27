@@ -82,3 +82,6 @@
 	path = external/MetalANGLE
 	url = https://github.com/coronalabs/metalangle.git
 	branch = Solar2D-Changes-Reverted
+[submodule "external/bgfx"]
+	path = external/bgfx
+	url = https://github.com/bkaradzic/bgfx.cmake.git

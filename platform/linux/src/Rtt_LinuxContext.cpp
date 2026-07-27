@@ -16,6 +16,10 @@
 #include "Rtt_LuaContext.h"
 #include "Core/Rtt_Types.h"
 #include "Rtt_LinuxContext.h"
+
+#if defined( Rtt_USE_BGFX )
+	#include <SDL2/SDL_syswm.h>
+#endif
 #include "Rtt_LinuxPlatform.h"
 #include "Rtt_LinuxRuntimeDelegate.h"
 #include "Rtt_LuaFile.h"
@@ -136,6 +140,46 @@ namespace Rtt
 		fPlatform = new LinuxPlatform(fPathToApp.c_str(), documentsDir.c_str(), temporaryDir.c_str(), cachesDir.c_str(), systemCachesDir.c_str(), skinDir.c_str(), GetStartupPath(NULL));
 		fRuntime = new LinuxRuntime(*fPlatform, NULL);
 		fRuntime->SetDelegate(fRuntimeDelegate);
+
+#if defined( Rtt_USE_BGFX )
+		// bgfx creates the graphics context itself, so it needs the native
+		// window rather than the GL context SDL already made for this window.
+		{
+			SDL_SysWMinfo wmInfo;
+			SDL_VERSION( &wmInfo.version );
+
+			if ( SDL_GetWindowWMInfo( app->GetWindow(), &wmInfo ) )
+			{
+				int windowWidth = 0;
+				int windowHeight = 0;
+				SDL_GetWindowSize( app->GetWindow(), &windowWidth, &windowHeight );
+
+				fBgfxSurfaceParams.fWidth = windowWidth;
+				fBgfxSurfaceParams.fHeight = windowHeight;
+
+				if ( SDL_SYSWM_X11 == wmInfo.subsystem )
+				{
+					fBgfxSurfaceParams.fNativeDisplayType = wmInfo.info.x11.display;
+					fBgfxSurfaceParams.fNativeWindowHandle = (void*)(uintptr_t)wmInfo.info.x11.window;
+				}
+				else if ( SDL_SYSWM_WAYLAND == wmInfo.subsystem )
+				{
+					fBgfxSurfaceParams.fNativeDisplayType = wmInfo.info.wl.display;
+					fBgfxSurfaceParams.fNativeWindowHandle = wmInfo.info.wl.surface;
+					fBgfxSurfaceParams.fIsWayland = true;
+				}
+
+				if ( fBgfxSurfaceParams.fNativeWindowHandle )
+				{
+					fRuntime->SetBackend( "bgfxBackend", &fBgfxSurfaceParams );
+				}
+				else
+				{
+					Rtt_LogException( "WARNING: no native window for bgfx under this SDL video driver; staying on OpenGL\n" );
+				}
+			}
+		}
+#endif
 
 		if (app->IsRunningOnSimulator())
 		{

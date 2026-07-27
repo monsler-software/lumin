@@ -184,7 +184,13 @@ class Renderer
         void SetWireframeEnabled( bool enabled );
 
 		static U32 GetMaxTextureSize();
+
+		// key is one of RendererCapabilities::k* ("vendor", "renderer", ...).
+		static const char *GetRendererString( const char *key );
+
+		// Legacy spelling taking a GL_* key; see CommandBuffer::GetGlString.
 		static const char *GetGlString( const char *s );
+
 		static bool GetGpuSupportsHighPrecisionFragmentShaders();
         static U32 GetMaxUniformVectorsCount();
 		static U32 GetMaxVertexTextureUnits();

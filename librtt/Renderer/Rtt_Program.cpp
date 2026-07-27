@@ -371,6 +371,13 @@ ProgramHeader::CopyHeaderSource( Program::Language language, char *dst, int dstS
 
 			Rtt_ASSERT( sizeof( kVulkanGLSL_Header ) < dstSize );
 		}
+		else if ( Program::kBgfxSC == language )
+		{
+			// bgfx applies precision qualifiers itself, and its preprocessor
+			// rejects a second definition of the P_* macros the shell already
+			// declares. Nothing to prepend.
+			dst[0] = '\0';
+		}
 		else
 		{
 			Rtt_ASSERT( Program::kOpenGL_ES_2 == language );

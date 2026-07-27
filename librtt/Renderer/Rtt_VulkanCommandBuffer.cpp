@@ -16,9 +16,13 @@
 #include "Renderer/Rtt_VulkanProgram.h"
 #include "Renderer/Rtt_VulkanTexture.h"
 #include "Renderer/Rtt_VulkanRenderer.h"
+#include "Renderer/Rtt_RendererCapabilities.h"
 #include "Display/Rtt_ShaderResource.h"
 
+#include "Core/Rtt_String.h"
+
 #include <algorithm>
+#include <cstdio>
 #include <cinttypes> // https://stackoverflow.com/questions/8132399/how-to-printf-uint64-t-fails-with-spurious-trailing-in-format#comment9979590_8132440
 #include <limits>
 
@@ -191,6 +195,90 @@ VulkanCommandBuffer::Initialize()
 	InitializeFBO();
 	InitializeCachedParams();
 	CacheQueryParam( kMaxTextureSize );
+
+	// Before this existed, these queries resolved at link time to the GL
+	// implementations and issued GL calls with no GL context bound.
+	fCapabilities.SetProperties( &fRenderer.GetContext()->GetProperties() );
+
+	RendererCapabilities::Set( &fCapabilities );
+}
+
+VulkanRendererCapabilities::VulkanRendererCapabilities()
+:	fProperties( NULL )
+{
+	fVersion[0] = '\0';
+}
+
+void
+VulkanRendererCapabilities::SetProperties( const VkPhysicalDeviceProperties * properties )
+{
+	fProperties = properties;
+	fVersion[0] = '\0';
+}
+
+size_t
+VulkanRendererCapabilities::GetMaxUniformVectorsCount() const
+{
+	if ( !fProperties )
+	{
+		return 0;
+	}
+
+	// User uniforms travel in push constants; cf. VulkanPushConstants, whose
+	// leading fData block already claims 6 vectors for masks, time, sampler
+	// index and texel size.
+	const size_t kBuiltInVectors = 6;
+	size_t available = fProperties->limits.maxPushConstantsSize / ( 4 * sizeof( float ) );
+
+	return available > kBuiltInVectors ? available - kBuiltInVectors : 0;
+}
+
+size_t
+VulkanRendererCapabilities::GetMaxVertexTextureUnits() const
+{
+	return fProperties ? fProperties->limits.maxPerStageDescriptorSampledImages : 0;
+}
+
+size_t
+VulkanRendererCapabilities::GetMaxTextureSize() const
+{
+	return fProperties ? fProperties->limits.maxImageDimension2D : 0;
+}
+
+const char *
+VulkanRendererCapabilities::GetString( const char *key ) const
+{
+	if ( !fProperties )
+	{
+		return "";
+	}
+
+	if ( Rtt_StringCompare( key, kRenderer ) == 0 )
+	{
+		return fProperties->deviceName;
+	}
+	else if ( Rtt_StringCompare( key, kVersion ) == 0 || Rtt_StringCompare( key, kShaderVersion ) == 0 )
+	{
+		if ( '\0' == fVersion[0] )
+		{
+			uint32_t version = fProperties->apiVersion;
+
+			snprintf( fVersion, sizeof( fVersion ), "Vulkan %u.%u.%u",
+						VK_VERSION_MAJOR( version ), VK_VERSION_MINOR( version ), VK_VERSION_PATCH( version ) );
+		}
+
+		return fVersion;
+	}
+
+	// vendorID is a number, and Vulkan has no single extensions string.
+	return "";
+}
+
+bool
+VulkanRendererCapabilities::GetSupportsHighPrecisionFragmentShaders() const
+{
+	// 32-bit floats in fragment shaders are guaranteed by the Vulkan spec.
+	return true;
 }
 
 void
@@ -224,6 +312,11 @@ VulkanCommandBuffer::Denitialize()
 #ifdef ENABLE_GPU_TIMER_QUERIES
 //	glDeleteQueries( kTimerQueryCount, fTimerQueries );
 #endif
+
+	if ( &RendererCapabilities::GetCurrent() == &fCapabilities )
+	{
+		RendererCapabilities::Set( NULL );
+	}
 }
 
 void

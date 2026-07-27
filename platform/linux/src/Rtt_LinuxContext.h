@@ -20,6 +20,10 @@
 #include "Rtt_LinuxInputDeviceManager.h"
 #include "Rtt_LinuxSimulatorServices.h"
 #include "Rtt_LinuxRuntime.h"
+
+#if defined( Rtt_USE_BGFX )
+	#include "Renderer/Rtt_BgfxSurfaceParams.h"
+#endif
 #include "Rtt_LinuxRuntimeDelegate.h"
 #include "Rtt_LinuxKeyListener.h"
 #include "Rtt_LinuxMouseListener.h"
@@ -107,6 +111,12 @@ namespace Rtt
 		void Init();
 
 		LinuxRuntime* fRuntime;
+
+#if defined( Rtt_USE_BGFX )
+		// Held for the lifetime of the runtime: Display::Initialize reads it
+		// when it creates the backend.
+		BgfxSurfaceParams fBgfxSurfaceParams;
+#endif
 		LinuxRuntimeDelegate* fRuntimeDelegate;
 		std::string fPathToApp;
 		std::string fAppName;

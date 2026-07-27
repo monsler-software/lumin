@@ -31,6 +31,7 @@
 #include "Input/Rtt_InputDeviceCollection.h"
 #include "Input/Rtt_ReadOnlyInputDeviceCollection.h"
 #include "Renderer/Rtt_Geometry_Renderer.h"
+#include "Renderer/Rtt_RendererCapabilities.h"
 
 #include <locale>
 #include <locale.h>
@@ -238,8 +239,39 @@ LuaLibSystem::getInfo( lua_State *L )
                 ( Rtt_StringCompare( key, "GL_SHADING_LANGUAGE_VERSION" ) == 0 ) ||
                 ( Rtt_StringCompare( key, "GL_EXTENSIONS" ) == 0 ) )
     {
+        // Only the GL backend can answer these under their GL_* names; the
+        // backend-neutral "gpu*" keys below work on every backend.
         Runtime *runtime = LuaContext::GetRuntime( L );
         lua_pushstring( L, runtime->GetDisplay().GetGlString( key ) );
+    }
+    else if( ( Rtt_StringCompare( key, "gpuVendor" ) == 0 ) ||
+                ( Rtt_StringCompare( key, "gpuRenderer" ) == 0 ) ||
+                ( Rtt_StringCompare( key, "gpuVersion" ) == 0 ) ||
+                ( Rtt_StringCompare( key, "gpuShaderVersion" ) == 0 ) ||
+                ( Rtt_StringCompare( key, "gpuExtensions" ) == 0 ) )
+    {
+        // Note that plain "version" is Corona's own version, hence the prefix.
+        const char *rendererKey = RendererCapabilities::kVendor;
+
+        if ( Rtt_StringCompare( key, "gpuRenderer" ) == 0 )
+        {
+            rendererKey = RendererCapabilities::kRenderer;
+        }
+        else if ( Rtt_StringCompare( key, "gpuVersion" ) == 0 )
+        {
+            rendererKey = RendererCapabilities::kVersion;
+        }
+        else if ( Rtt_StringCompare( key, "gpuShaderVersion" ) == 0 )
+        {
+            rendererKey = RendererCapabilities::kShaderVersion;
+        }
+        else if ( Rtt_StringCompare( key, "gpuExtensions" ) == 0 )
+        {
+            rendererKey = RendererCapabilities::kExtensions;
+        }
+
+        Runtime *runtime = LuaContext::GetRuntime( L );
+        lua_pushstring( L, runtime->GetDisplay().GetRendererString( rendererKey ) );
     }
     else if ( Rtt_StringCompare( key, "gpuSupportsHighPrecisionFragmentShaders" ) == 0 )
     {

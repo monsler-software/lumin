@@ -144,15 +144,12 @@ class GPU
 		}
 #endif
 
-	// TODO: Following are implemented in Rtt_Color.cpp. Move to separate cpp file
 	public:
-		static GLenum GetInternalPixelFormat( PlatformBitmap::Format format );
+		// Note: the GLenum-returning pixel format helpers that used to be
+		// declared here had no definition anywhere and no callers. Backend
+		// specific format conversion belongs with the backend; the GL one lives
+		// in Renderer/Rtt_GLTexture.cpp.
 
-		#if !defined( Rtt_OPENGLES )
-			static GLenum GetPixelFormat( PlatformBitmap::Format format );
-			static GLenum GetPixelType( PlatformBitmap::Format format );
-		#endif
-		
 		static bool CheckIfContextSupportsExtension( const char * extension );
 };
 

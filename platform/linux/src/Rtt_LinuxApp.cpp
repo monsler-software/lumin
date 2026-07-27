@@ -67,15 +67,27 @@ namespace Rtt
 		curl_global_cleanup();
 
 		// Cleanup
+#if !defined( Rtt_USE_BGFX )
 		ImGui_ImplOpenGL3_Shutdown();
+#endif
 		ImGui_ImplSDL2_Shutdown();
 		ImGui::DestroyContext();
 
-		SDL_GL_DeleteContext(fGLcontext);
+		if (fGLcontext)
+		{
+			SDL_GL_DeleteContext(fGLcontext);
+		}
 		SDL_DestroyWindow(fWindow);
 		SDL_Quit();
 	}
 
+
+#if defined( Rtt_USE_BGFX )
+	// A placeholder size for the window bgfx initializes against, replaced by
+	// the project's own once config.lua has been read.
+	static const int kDefaultWindowWidth = 320;
+	static const int kDefaultWindowHeight = 480;
+#endif
 
 	bool SolarApp::InitSDL()
 	{
@@ -101,6 +113,36 @@ namespace Rtt
 		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE | SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 
+#if defined( Rtt_USE_BGFX )
+		// bgfx creates the graphics context itself, from the bare window, so
+		// SDL must not make one here: a GL context on this window would fight
+		// the one bgfx sets up, and its Vulkan backend cannot use a window
+		// configured for GL at all.
+		//
+		// The size matters as much as the flags. SDL_CreateWindow is asked for
+		// 0x0 and the real size only arrives later, once config.lua has been
+		// read, but bgfx captures the resolution when it initializes -- and a
+		// 1x1 swap chain is what it makes of a window that has no size yet.
+		uint32_t windowStyle = SDL_WINDOW_ALLOW_HIGHDPI;
+		fWindow = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+			kDefaultWindowWidth, kDefaultWindowHeight, windowStyle);
+		SetIcon();
+
+		fGLcontext = NULL;
+
+		// Dear ImGui still needs its context: the event loop calls into it
+		// whether or not anything is drawn. Only its OpenGL renderer backend is
+		// left out, since there is no GL context for it to draw through -- the
+		// simulator UI stays invisible until ImGui has a bgfx backend here.
+		IMGUI_CHECKVERSION();
+		fImCtx = ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+		ImGui_ImplSDL2_InitForVulkan(fWindow);
+
+		return true;
+#else
 		uint32_t windowStyle = SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI;
 		fWindow = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 0, 0, windowStyle);
 		SetIcon();
@@ -122,6 +164,7 @@ namespace Rtt
 		ImGui_ImplOpenGL3_Init(glsl_version);
 
 		return true;
+#endif
 	}
 
 	void SolarApp::SetIcon()
@@ -446,6 +489,12 @@ namespace Rtt
 	{
 		if (fImCtx == NULL)
 			return;
+
+#if defined( Rtt_USE_BGFX )
+		// No GL context and no ImGui renderer backend under bgfx; the UI is
+		// stepped so its state stays consistent, but nothing is drawn.
+		return;
+#endif
 
 		SDL_GL_MakeCurrent(fWindow, fGLcontext);
 		ImGui::SetCurrentContext(fImCtx);

@@ -31,8 +31,8 @@
 #include "Rtt_Profiling.h"
 #include "CoronaLua.h"
 
-#include "Renderer/Rtt_GLRenderer.h"
-#include "Renderer/Rtt_VulkanExports.h"
+#include "Renderer/Rtt_Renderer.h"
+#include "Renderer/Rtt_RendererFactory.h"
 #include "Renderer/Rtt_FrameBufferObject.h"
 #include "Renderer/Rtt_Matrix_Renderer.h"
 #include "Renderer/Rtt_Program.h"
@@ -267,23 +267,21 @@ Display::Initialize( lua_State *L, int configIndex, DeviceOrientation::Type orie
 	{
 		Rtt_Allocator *allocator = GetRuntime().GetAllocator();
 
-#if defined( Rtt_WIN_ENV )
-		if (strcmp( backend, "glBackend" ) == 0)
+		fRenderer = RendererFactory::Create( backend, allocator, backendContext, &InvalidateDisplay, this );
+
+		if ( !fRenderer )
 		{
-			fRenderer = Rtt_NEW( allocator, GLRenderer( allocator ) );
+			// The requested backend is not in this build. Say which one, then
+			// fall back rather than leaving the app with no renderer at all.
+			Rtt_LogException(
+				"WARNING: rendering backend '%s' is not available in this build; using '%s' instead\n",
+				backend ? backend : "(none)",
+				RendererFactory::GetDefaultName() );
+
+			fRenderer = RendererFactory::Create( NULL, allocator, backendContext, &InvalidateDisplay, this );
 		}
 
-		else if (strcmp( backend, "vulkanBackend" ) == 0)
-		{
-			fRenderer = VulkanExports::CreateVulkanRenderer( allocator, backendContext, &InvalidateDisplay, this );
-		}
-		else
-		{
-			Rtt_ASSERT_NOT_REACHED();
-		}
-#else
-		fRenderer = Rtt_NEW( allocator, GLRenderer( allocator ) );
-#endif
+		Rtt_ASSERT( fRenderer );
 
 		fRenderer->Initialize();
 		
@@ -1946,6 +1944,12 @@ Display::GetMaxTextureSize()
     result = Renderer::GetMaxTextureSize();
     Rtt_ASSERT( result > 0 );
     return result;
+}
+
+const char *
+Display::GetRendererString( const char *key )
+{
+    return Renderer::GetRendererString( key );
 }
 
 const char *

@@ -11,6 +11,7 @@
 #define _Rtt_VulkanCommandBuffer_H__
 
 #include "Renderer/Rtt_CommandBuffer.h"
+#include "Renderer/Rtt_RendererCapabilities.h"
 #include "Renderer/Rtt_Uniform.h"
 #include "Renderer/Rtt_VulkanIncludes.h"
 
@@ -48,7 +49,28 @@ struct VulkanPushConstants
 	float fUniforms[10 * 4];// uniform userdata (compact representation, i.e. <= 2 or 10 vectors)
 };
 
-// 
+// Answers the backend-neutral capability queries from the physical device
+// properties Vulkan already reports. Vulkan exposes no equivalent of
+// GL_EXTENSIONS as a single string, so that key comes back empty.
+class VulkanRendererCapabilities : public RendererCapabilities
+{
+	public:
+		VulkanRendererCapabilities();
+
+		void SetProperties( const VkPhysicalDeviceProperties * properties );
+
+		virtual size_t GetMaxUniformVectorsCount() const;
+		virtual size_t GetMaxVertexTextureUnits() const;
+		virtual size_t GetMaxTextureSize() const;
+		virtual const char *GetString( const char *key ) const;
+		virtual bool GetSupportsHighPrecisionFragmentShaders() const;
+
+	private:
+		const VkPhysicalDeviceProperties * fProperties;
+		mutable char fVersion[32];
+};
+
+//
 class VulkanCommandBuffer : public CommandBuffer
 {
 	public:
@@ -187,6 +209,7 @@ class VulkanCommandBuffer : public CommandBuffer
 		U32 fTimerQueryIndex;*/
 		Real fElapsedTimeGPU;
 		S32 fCachedQuery[kNumQueryableParams];
+		VulkanRendererCapabilities fCapabilities;
 		VulkanRenderer & fRenderer;
 		Uniform fContentSize;
 

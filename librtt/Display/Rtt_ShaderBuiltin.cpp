@@ -418,22 +418,94 @@ ShaderBuiltin::Exists( ShaderTypes::Category category, const char *name )
 int luaload_shell_default_gl(lua_State* L);
 int luaload_kernel_default_gl(lua_State* L);
 int luaload_shell_default_vulkan(lua_State * L);
+#if defined( Rtt_USE_BGFX )
+	int luaload_shell_default_bgfx(lua_State * L);
+#endif
+
+namespace /*anonymous*/
+{
+	// Backend name -> its default shell shader. GL is entry 0 and doubles as
+	// the fallback, so a backend that registers nothing still gets a shell.
+	struct ShellEntry
+	{
+		const char *fBackend;
+		ShaderBuiltin::ShellLoader fLoader;
+	};
+
+	enum { kMaxShells = 8 };
+
+	ShellEntry sShells[kMaxShells] = {
+		{ "glBackend", luaload_shell_default_gl },
+	#if defined( Rtt_WIN_ENV )
+		{ "vulkanBackend", luaload_shell_default_vulkan },
+	#endif
+	#if defined( Rtt_USE_BGFX )
+		{ "bgfxBackend", luaload_shell_default_bgfx },
+	#endif
+	};
+
+	// The loader PushDefaultShell selected, read back by the dispatcher below.
+	// As with the rest of shader loading, this assumes a single thread.
+	ShaderBuiltin::ShellLoader sSelectedShell = NULL;
+
+	int OpenSelectedShell( lua_State *L )
+	{
+		// Corona::Lua::Open< F > is the same call with F fixed at compile time,
+		// which a registry of loaders cannot use.
+		return Corona::Lua::OpenModule( L, sSelectedShell );
+	}
+}
+
+bool
+ShaderBuiltin::RegisterDefaultShell( const char *backend, ShellLoader loader )
+{
+	if ( NULL == backend || '\0' == backend[0] || NULL == loader )
+	{
+		return false;
+	}
+
+	for ( int i = 0; i < kMaxShells; ++i )
+	{
+		if ( NULL == sShells[i].fBackend )
+		{
+			sShells[i].fBackend = backend;
+			sShells[i].fLoader = loader;
+
+			return true;
+		}
+
+		if ( strcmp( sShells[i].fBackend, backend ) == 0 )
+		{
+			sShells[i].fLoader = loader;
+
+			return true;
+		}
+	}
+
+	return false;
+}
 
 bool
 ShaderBuiltin::PushDefaultShell( lua_State *L, const char * backend )
 {
-#if defined( Rtt_WIN_ENV )
-	if (strcmp( backend, "vulkanBackend" ) == 0)
+	ShellLoader loader = luaload_shell_default_gl;
+
+	if ( backend )
 	{
-		lua_pushcfunction( L, Corona::Lua::Open< luaload_shell_default_vulkan > );
+		for ( int i = 0; i < kMaxShells && sShells[i].fBackend; ++i )
+		{
+			if ( strcmp( sShells[i].fBackend, backend ) == 0 )
+			{
+				loader = sShells[i].fLoader;
+
+				break;
+			}
+		}
 	}
-	else
-	{
-		lua_pushcfunction( L, Corona::Lua::Open< luaload_shell_default_gl > );
-	}
-#else
-	lua_pushcfunction( L, Corona::Lua::Open< luaload_shell_default_gl > );
-#endif
+
+	sSelectedShell = loader;
+
+	lua_pushcfunction( L, OpenSelectedShell );
 
 	return ( !! Rtt_VERIFY( 0 == Corona::Lua::DoCall( L, 0, 1 ) ) );
 }

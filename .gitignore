@@ -295,3 +295,7 @@ external/JNLua/.project
 /jre.macos.tgz
 jre.win32.7z
 redist.win32.7z
+
+# Local CMake build trees
+/build/
+/build-bgfx/

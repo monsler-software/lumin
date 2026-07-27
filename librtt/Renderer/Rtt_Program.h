@@ -42,7 +42,8 @@ class Program : public CPUResource
 			kDefault = 0,
 			kOpenGL_2_1 = 1,
 			kOpenGL_ES_2 = kDefault,
-			kVulkanGLSL = 2
+			kVulkanGLSL = 2,
+			kBgfxSC = 3 // bgfx's own shader dialect, compiled by shaderc
 		}
 		Language;
 

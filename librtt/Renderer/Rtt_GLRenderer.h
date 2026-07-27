@@ -21,6 +21,8 @@ namespace Rtt
 
 class GPUResource;
 class CPUResource;
+class BufferBitmap;
+class RenderingStream;
 
 // ----------------------------------------------------------------------------
 
@@ -32,6 +34,11 @@ class GLRenderer : public Renderer
 
 	public:
 		GLRenderer( Rtt_Allocator* allocator );
+
+		// Reads back the framebuffer with glReadPixels. This used to live in
+		// GPUStream, which the base Renderer called into, so every backend
+		// inherited a GL screen capture whether or not it rendered with GL.
+		virtual void CaptureFrameBuffer( RenderingStream & stream, BufferBitmap & bitmap, S32 x_in_pixels, S32 y_in_pixels, S32 w_in_pixels, S32 h_in_pixels );
 
 	protected:
 		// Create an OpenGL resource appropriate for the given CPUResource.

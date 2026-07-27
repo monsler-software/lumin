@@ -114,6 +114,13 @@ PlatformSurface::SetDelegate( PlatformSurfaceDelegate* delegate )
 // ----------------------------------------------------------------------------
 
 // TODO: Replace platform ifdef's with a feature ifdef: Rtt_OFFSCREEN_SURFACE in Rtt_Config.h
+
+// Note: OffscreenGPUSurface talks to GL directly, bypassing the Renderer and
+// its FrameBufferObject/Texture resources, so it cannot work under a non-GL
+// backend. It is however unreachable: its only construction site is
+// ApplePlatform::CreateOffscreenSurface, and nothing in the engine calls
+// MPlatform::CreateOffscreenSurface. Rebuild it on FrameBufferObject if a
+// caller ever comes back, rather than porting the GL calls.
 #if ! defined( Rtt_ANDROID_ENV ) && !defined( Rtt_WIN_ENV ) && !defined( Rtt_EMSCRIPTEN_ENV ) && !defined( Rtt_NXS_ENV )
 
 OffscreenGPUSurface::OffscreenGPUSurface( const PlatformSurface& parent )

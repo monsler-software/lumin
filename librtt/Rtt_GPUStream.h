@@ -141,7 +141,8 @@ class GPUStream : public RenderingStream
 		virtual U8 GetAlpha() const;
 		virtual U8 SetAlpha( U8 newValue, bool accumuluate );
 
-		virtual void CaptureFrameBuffer( BufferBitmap& outBuffer, S32 x, S32 y, S32 w, S32 h );
+		// CaptureFrameBuffer is deliberately not overridden here; the backend
+		// owns framebuffer readback. See GLRenderer::CaptureFrameBuffer.
 
 	public:
 		virtual void Begin3D( const Xform3D*, const Rect& bounds );

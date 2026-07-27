@@ -57,10 +57,21 @@ class CommandBuffer
 		void WriteBytes( const void * value, size_t size );
 		
 	public:
+		// These forward to the RendererCapabilities the live backend installed;
+		// see Rtt_RendererCapabilities.h. They are answered by whichever backend
+		// is rendering, not by whichever backend happened to get linked in.
 		static size_t GetMaxUniformVectorsCount();
 		static size_t GetMaxVertexTextureUnits();
 		static size_t GetMaxTextureSize();
+
+		// key is one of RendererCapabilities::k* ("vendor", "renderer", ...).
+		// Returns "" rather than NULL when the backend cannot answer.
+		static const char *GetRendererString( const char *key );
+
+		// Legacy spelling of GetRendererString, taking a GL_* key. Kept for the
+		// GL_* names system.getInfo() has always accepted.
 		static const char *GetGlString( const char *s );
+
 		static bool GetGpuSupportsHighPrecisionFragmentShaders();
 
         virtual bool HasFramebufferBlit( bool * canScale ) const = 0;

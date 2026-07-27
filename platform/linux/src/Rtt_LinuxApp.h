@@ -134,6 +134,10 @@ namespace Rtt
 
 		virtual int GetMenuHeight() const { return 0; }
 
+		// The bgfx backend takes the window rather than a context, and makes
+		// its own; see BgfxSurfaceParams.
+		SDL_Window* GetWindow() const { return fWindow; }
+
 	protected:
 
 		virtual void SolarEvent(const SDL_Event& e) {}

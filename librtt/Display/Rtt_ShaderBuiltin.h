@@ -121,6 +121,15 @@ class ShaderBuiltin
 		static bool Exists( ShaderTypes::Category category, const char *name );
 
 	public:
+		// Loader for a backend's default shell shader, e.g. shell_default_gl.
+		typedef int (*ShellLoader)( lua_State *L );
+
+		// Associates a backend name with the shell its kernels expect. A
+		// backend registers its own shell here instead of PushDefaultShell
+		// growing another branch per backend. Returns false if the table is
+		// full. Backends that register nothing get the GL shell.
+		static bool RegisterDefaultShell( const char *backend, ShellLoader loader );
+
 		static bool PushDefaultShell( lua_State *L, const char * backend );
 		static bool PushDefaultKernel( lua_State *L );
 	
