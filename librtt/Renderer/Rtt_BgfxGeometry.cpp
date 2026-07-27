@@ -62,6 +62,14 @@ BgfxGeometry::Create( CPUResource* resource )
 	Rtt_ASSERT( CPUResource::kGeometry == resource->GetType() );
 	Geometry* geometry = static_cast< Geometry* >( resource );
 
+	// See the note in BgfxTexture::Create: this is reached both from Corona's
+	// create queue and from every BindGeometry, so without this the buffers
+	// would be recreated -- and the old ones leaked -- once per draw.
+	if ( bgfx::isValid( fVertexBuffer ) )
+	{
+		return;
+	}
+
 	if ( !geometry->GetStoredOnGPU() )
 	{
 		// Corona re-fills this geometry every frame out of its GeometryPool.

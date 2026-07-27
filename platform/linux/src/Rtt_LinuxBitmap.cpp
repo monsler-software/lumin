@@ -297,26 +297,46 @@ namespace Rtt
 			fWidth = (fWidth + 3) & -4;
 		}
 
-		fData = (U8 *)Rtt_MALLOC(&context, fHeight * fWidth * 4);
-		memset(fData, 0, fHeight * fWidth * 4);
+#ifdef Rtt_USE_BGFX
+		// What freetype produced is one byte of coverage per pixel, and that is
+		// what a text bitmap is used as: a mask. The GL path below spreads it
+		// over four channels because the Linux backend has no single-channel
+		// texture format wired up; bgfx has one (see PlatformBitmapTexture::
+		// ConvertFormat), so the mask is kept as it came out, at a quarter of
+		// the memory.
+		const int bpp = 1;
+		const int pitch = fWidth;
 
-		int pitch = fWidth * 4; // rgba
-		int bpp = 4;
+		fData = (U8 *)Rtt_MALLOC(&context, fHeight * pitch);
+		memset(fData, 0, fHeight * pitch);
+#else
+		const int bpp = 4;
+		const int pitch = fWidth * 4; // rgba
+
+		fData = (U8 *)Rtt_MALLOC(&context, fHeight * pitch);
+		memset(fData, 0, fHeight * pitch);
+#endif
+
+		// fWidth may have been rounded up above, so the source rows are the
+		// narrower ones; the padding stays as the memset left it.
+		const int copyWidth = Min(fWidth, (S32)im->m_width);
 
 		for (int y = 0; y < fHeight; y++)
 		{
-			for (int x = 0; x < fWidth; x++)
+			for (int x = 0; x < copyWidth; x++)
 			{
 				const U8 *src = image + y * im->m_pitch + x * im->m_bpp;
 				U8 *dst = fData + y * pitch + x * bpp;
 				dst[0] = src[0];
+#ifndef Rtt_USE_BGFX
 				dst[1] = src[0];
 				dst[2] = src[0];
 				dst[3] = src[0];
+#endif
 			}
 		}
 
-		fFormat = kRGBA;
+		fFormat = GetFormat();
 	}
 
 	LinuxTextBitmap::~LinuxTextBitmap()
@@ -325,7 +345,11 @@ namespace Rtt
 
 	PlatformBitmap::Format LinuxTextBitmap::GetFormat() const
 	{
+#ifdef Rtt_USE_BGFX
+		return PlatformBitmap::kMask;
+#else
 		return PlatformBitmap::kRGBA;
+#endif
 	}
 
 	U8 LinuxTextBitmap::GetByteAlignment() const

@@ -10,6 +10,7 @@
 #ifndef _Rtt_BgfxCommandBuffer_H__
 #define _Rtt_BgfxCommandBuffer_H__
 
+#include "Renderer/Rtt_BgfxDrawState.h"
 #include "Renderer/Rtt_CommandBuffer.h"
 #include "Renderer/Rtt_RendererCapabilities.h"
 #include "Renderer/Rtt_Texture.h"
@@ -24,6 +25,7 @@ namespace Rtt
 
 class BgfxGeometry;
 class Geometry;
+class FormatExtensionList;
 class BgfxProgram;
 class BgfxRenderer;
 
@@ -116,33 +118,26 @@ class BgfxCommandBuffer : public CommandBuffer
 		void ApplyTextures();
 		void SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType type, bool indexed );
 
+		// Fills a transient index buffer that draws a fan of vertexCount
+		// vertices as triangles, and binds it. False if the fan cannot be
+		// drawn, in which case nothing was bound.
+		bool SetFanIndices( U32 vertexCount );
+
+		// Fills and binds bgfx's instance data buffer from whatever Corona
+		// bound through BindInstancing and BindVertexFormat. False if the draw
+		// cannot be instanced, in which case nothing was bound.
+		bool SetInstanceData();
+
+		// Builds a GPU resource now if Corona's create queue has not reached it
+		// yet; see the definition for why this backend needs that.
+		static void EnsureCreated( CPUResource* resource );
+
 		BgfxRenderer& fRenderer;
 
-		// View 0 is the window; render-to-texture takes the ids above it.
-		bgfx::ViewId fCurrentView;
-
-		BgfxGeometry* fGeometry;
-
-		// Geometry Corona refills every frame owns no bgfx buffers, so the
-		// vertex data itself is needed at draw time; see SubmitDraw.
-		Geometry* fGeometrySource;
-
-		BgfxProgram* fProgram;
-		Program::Version fProgramVersion;
-
-		// bgfx consumes uniform values at each submit(), while Corona sets them
-		// only when they change. Whatever is bound is therefore remembered here
-		// and re-applied for every draw; see SubmitDraw.
-		Uniform* fBoundUniforms[Uniform::kNumBuiltInVariables];
-
-		// Texture bindings are consumed at submit() the same way, and Corona
-		// rebinds a texture only when the fill changes, so they are remembered
-		// and re-applied alongside the uniforms above.
-		Texture* fBoundTextures[Texture::kNumUnits];
-
-		U64 fBlendState;
-		bool fBlendEnabled;
-		bool fScissorEnabled;
+		// Shared with the other command buffer, since Corona alternates between
+		// the two while the state deciding what to re-bind is common to both.
+		// See the note on BgfxDrawState.
+		BgfxDrawState& fState;
 
 		S32 fCachedQuery[kNumQueryableParams];
 

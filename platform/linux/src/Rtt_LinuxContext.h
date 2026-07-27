@@ -103,6 +103,12 @@ namespace Rtt
 
 		void SetSize(int w, int h);
 
+		// The window has already been resized by the window system (a user drag,
+		// a tiling WM, a fullscreen toggle). Unlike SetSize this does not push a
+		// size back to SDL; it only brings the runtime in line with the size the
+		// window already has.
+		void OnSurfaceResized(int w, int h);
+
 		std::string GetTitle() const;
 		void SetTitle(const std::string& title);
 

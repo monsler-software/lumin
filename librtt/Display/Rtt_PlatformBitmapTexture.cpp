@@ -77,10 +77,13 @@ PlatformBitmapTexture::ConvertFormat( PlatformBitmap::Format format )
 			// the gray value across all 4 channels. Compare:
 			// * Luminance: (a,a,a,a)
 			// * Alpha:     (0,0,0,a)
-#if defined(Rtt_LINUX_ENV)
+#if defined(Rtt_LINUX_ENV) && !defined(Rtt_USE_BGFX)
 			// not supported Luminance & Alpha
 			result = Texture::kRGBA;
 #else
+			// bgfx has a single-channel format on every backend it supports
+			// (R8), and the mask data really is one byte per pixel, so the
+			// Linux workaround above would describe it four times too large.
 			result = Texture::kLuminance;
 #endif
 			break;

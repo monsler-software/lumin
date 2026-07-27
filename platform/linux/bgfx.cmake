@@ -140,6 +140,7 @@ set(LUMIN_BGFX_SHADER_INCLUDE_DIR "${BGFX_ROOT}/bgfx/src")
 
 set(LUMIN_BGFX_SOURCES
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxCommandBuffer.cpp"
+	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxDrawState.cpp"
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxFrameBufferObject.cpp"
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxGeometry.cpp"
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxProgram.cpp"

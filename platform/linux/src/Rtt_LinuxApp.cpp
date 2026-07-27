@@ -124,7 +124,15 @@ namespace Rtt
 		// 0x0 and the real size only arrives later, once config.lua has been
 		// read, but bgfx captures the resolution when it initializes -- and a
 		// 1x1 swap chain is what it makes of a window that has no size yet.
+		// Resizable, since content is rendered at the window's own resolution:
+		// a window of any size is a valid one, and the runtime follows it.
 		uint32_t windowStyle = SDL_WINDOW_ALLOW_HIGHDPI;
+
+		if (!IsRunningOnSimulator())
+		{
+			windowStyle |= SDL_WINDOW_RESIZABLE;
+		}
+
 		fWindow = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 			kDefaultWindowWidth, kDefaultWindowHeight, windowStyle);
 		SetIcon();
@@ -336,28 +344,23 @@ namespace Rtt
 				{
 					if (evt.window.windowID == SDL_GetWindowID(fWindow))
 					{
-						//						SDL_DisplayMode dm;
-						//						SDL_GetDesktopDisplayMode(0, &dm);
-						int w, h;
-						GetWindowSize(&w, &h);
-						//		fContext->SetSize(w, h);
-
-						// Tell the backend the surface changed size. Backends
-						// whose context belongs to the window pick this up on
-						// their own and ignore it; bgfx owns its swapchain and
-						// would otherwise keep presenting at the old size.
+						// Both the backend and Corona itself need the new size:
+						// the backend so it stops presenting at the old one,
+						// the runtime so the content scale, the projection and
+						// the "resize" event follow the window.
 						//
 						// Computed here rather than through GetWindowSize,
 						// which subtracts the menu height with "=" where it
 						// means "-=" and so cannot report a usable height.
 						if (fContext != NULL && fContext->GetRuntime() != NULL)
 						{
+							int w, h;
 							SDL_GetWindowSize(fWindow, &w, &h);
 							h -= GetMenuHeight();
 
 							if (w > 0 && h > 0)
 							{
-								fContext->GetRuntime()->GetDisplay().GetRenderer().SetSurfaceSize(w, h);
+								fContext->OnSurfaceResized(w, h);
 							}
 						}
 					}

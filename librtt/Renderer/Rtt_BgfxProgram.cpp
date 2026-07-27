@@ -12,6 +12,8 @@
 #include "Core/Rtt_Assert.h"
 
 #include "Renderer/Rtt_BgfxShaderCompiler.h"
+#include "Renderer/Rtt_FormatExtensionList.h"
+#include "Display/Rtt_ShaderResource.h"
 
 #include <string.h>
 #include <string>
@@ -43,6 +45,21 @@ static const char kVaryingDef[] =
 	"vec4 v_ColorScaleIn  : COLOR0;\n"
 	"vec4 v_UserDataIn    : TEXCOORD2;\n"
 	"vec2 v_PositionIn    : TEXCOORD3;\n"
+	// Declared for every variant, not just the masked ones: shaderc reads the
+	// $input/$output lists before the preprocessor runs, so they cannot be put
+	// behind MASK_COUNT. A variant that does not mask simply leaves them
+	// unwritten.
+	"vec2 v_MaskUV0In     : TEXCOORD4;\n"
+	"vec2 v_MaskUV1In     : TEXCOORD5;\n"
+	"vec2 v_MaskUV2In     : TEXCOORD6;\n"
+	"\n"
+	// Per-instance data. Only the programs that instance list these in their
+	// $input, so declaring them all here costs nothing elsewhere.
+	"vec4 i_data0 : TEXCOORD7;\n"
+	"vec4 i_data1 : TEXCOORD8;\n"
+	"vec4 i_data2 : TEXCOORD9;\n"
+	"vec4 i_data3 : TEXCOORD10;\n"
+	"vec4 i_data4 : TEXCOORD11;\n"
 	"\n"
 	"vec3 a_position  : POSITION;\n"
 	"vec3 a_texcoord0 : TEXCOORD0;\n"
@@ -117,6 +134,167 @@ CompileStage( const std::string& source, BgfxShaderCompiler::Stage stage, const 
 
 // ----------------------------------------------------------------------------
 
+U32
+BgfxProgram::GetInstanceGroupOffset( const FormatExtensionList* list, U32 groupIndex )
+{
+	U32 offset = 0;
+
+	if ( !list )
+	{
+		return 0;
+	}
+
+	for ( U32 i = 0; i < list->GetGroupCount() && i < groupIndex; ++i )
+	{
+		const FormatExtensionList::Group& group = list->GetGroups()[i];
+
+		if ( group.IsInstanceRate() )
+		{
+			// Rounded up, since each group starts at an i_data vector.
+			offset += ( group.size + kInstanceVectorSize - 1 ) / kInstanceVectorSize * kInstanceVectorSize;
+		}
+	}
+
+	return offset;
+}
+
+U32
+BgfxProgram::GetInstanceStride( const FormatExtensionList* list )
+{
+	const U32 size = list ? GetInstanceGroupOffset( list, list->GetGroupCount() ) : 0;
+
+	// An instanced draw always carries at least one vector: with nothing else
+	// to send, it holds the instance index, which is how CoronaInstanceID is
+	// reached on backends with no equivalent of gl_InstanceID.
+	return size > 0 ? size : kInstanceVectorSize;
+}
+
+// The i_data vector and swizzle an extension attribute lands on, given where
+// its group sits in the per-instance block.
+static bool
+InstanceAttributeReference( const FormatExtensionList* list, U32 attributeIndex, std::string& reference )
+{
+	const FormatExtensionList::Attribute& attribute = list->GetAttributes()[attributeIndex];
+	const U32 groupIndex = list->FindGroup( attributeIndex );
+	const U32 offset = BgfxProgram::GetInstanceGroupOffset( list, groupIndex ) + attribute.offset;
+
+	const U32 vector = offset / BgfxProgram::kInstanceVectorSize;
+	const U32 component = ( offset % BgfxProgram::kInstanceVectorSize ) / 4;
+	const U32 components = attribute.components > 0 ? attribute.components : 4;
+
+	if ( vector >= BgfxProgram::kMaxInstanceVectors || component + components > 4 )
+	{
+		return false;
+	}
+
+	char buf[64];
+	static const char kComponentNames[] = "xyzw";
+
+	char swizzle[5] = {};
+
+	for ( U32 i = 0; i < components; ++i )
+	{
+		swizzle[i] = kComponentNames[component + i];
+	}
+
+	sprintf( buf, "CoronaInstanceData%u.%s", vector, swizzle );
+
+	reference = buf;
+
+	return true;
+}
+
+// What a kernel needs in order to see its per-instance values, in the terms
+// bgfx works in: instance data arrives as vec4s named i_data0 and up, so each
+// attribute becomes a swizzle of one of those rather than an attribute of its
+// own, and the Corona<Name> macros kernels use are defined to point at it.
+static std::string
+InstanceDefines( const FormatExtensionList* list )
+{
+	std::string result;
+
+	if ( !list || !list->IsInstanced() )
+	{
+		return result;
+	}
+
+	list->SortNames();
+
+	for ( U32 i = 0; i < list->GetAttributeCount(); ++i )
+	{
+		const U32 groupIndex = list->FindGroup( i );
+
+		if ( !list->GetGroups()[groupIndex].IsInstanceRate() )
+		{
+			continue; // vertex-rate extension attributes are a separate matter
+		}
+
+		std::string reference;
+
+		const char* name = list->FindNameByAttribute( i );
+
+		if ( !name || !InstanceAttributeReference( list, i, reference ) )
+		{
+			Rtt_TRACE( ( "ERROR: per-instance attribute '%s' does not fit in the instance data bgfx allows\n", name ? name : "?" ) );
+			continue;
+		}
+
+		char buf[128];
+
+		sprintf( buf, "#define Corona%c%s %s\n", toupper( name[0] ), name + 1, reference.c_str() );
+
+		result += buf;
+	}
+
+	// bgfx has no gl_InstanceID it can promise on every backend, so the index
+	// travels in the instance data like everything else. When there is no other
+	// per-instance data, the command buffer writes it into the first vector.
+	if ( list->IsInstancedByID() )
+	{
+		result += "#define CoronaInstanceFloat CoronaInstanceData0.x\n"
+				  "#define CoronaInstanceID int(CoronaInstanceData0.x)\n";
+	}
+
+	return result;
+}
+
+// bgfx reads the $input list textually, before the preprocessor runs, so the
+// shell cannot declare the instance attributes conditionally: they have to be
+// spliced into the line for the programs that use them, and left out of the
+// rest, where an unfilled attribute would be undefined.
+static std::string
+AddInstanceInputs( const std::string& source, U32 vectorCount )
+{
+	const size_t start = source.find( "$input " );
+
+	if ( std::string::npos == start )
+	{
+		return source;
+	}
+
+	const size_t end = source.find( '\n', start );
+
+	if ( std::string::npos == end )
+	{
+		return source;
+	}
+
+	std::string inputs;
+
+	for ( U32 i = 0; i < vectorCount; ++i )
+	{
+		char buf[32];
+
+		sprintf( buf, ", i_data%u", i );
+
+		inputs += buf;
+	}
+
+	return source.substr( 0, end ) + inputs + source.substr( end );
+}
+
+// ----------------------------------------------------------------------------
+
 BgfxProgram::VersionData::VersionData()
 :	fProgram( BGFX_INVALID_HANDLE )
 {
@@ -128,7 +306,12 @@ BgfxProgram::VersionData::VersionData()
 }
 
 BgfxProgram::BgfxProgram()
+:	fResource( NULL )
 {
+	for ( U32 i = 0; i < Program::kNumVersions; ++i )
+	{
+		fBuildFailed[i] = false;
+	}
 }
 
 bool
@@ -155,9 +338,42 @@ BgfxProgram::Build( Program& program, Program::Version version, VersionData& dat
 		default: break;
 	}
 
-	const std::string prefix = maskDefine + ( header ? header : "" );
+	std::string prefix = maskDefine + ( header ? header : "" );
 
-	const bgfx::Memory* vertexBlob = CompileStage( prefix + vertexSource, BgfxShaderCompiler::kVertex, "corona.vs" );
+	// Instancing: the kernel reaches its per-instance values, and the instance
+	// index, through macros over bgfx's instance data vectors.
+	const ShaderResource* shaderResource = program.GetShaderResource();
+	const FormatExtensionList* extensionList = shaderResource ? shaderResource->GetExtensionList() : NULL;
+	const bool isInstanced = extensionList && extensionList->IsInstanced();
+
+	if ( isInstanced )
+	{
+		// The shell declares one global per vector and copies the attributes
+		// into them; this is how it learns how many there are.
+		char instanceVectors[64];
+
+		sprintf( instanceVectors, "#define CORONA_INSTANCE_VECTORS %u\n", GetInstanceStride( extensionList ) / kInstanceVectorSize );
+
+		prefix += instanceVectors;
+		prefix += InstanceDefines( extensionList );
+	}
+
+	if ( extensionList && extensionList->HasVertexRateData() )
+	{
+		// Per-vertex extension attributes would mean a second vertex stream and
+		// a layout built per format; nothing else here depends on it, so the
+		// program still compiles and the values simply are not there.
+		Rtt_TRACE( ( "WARNING: the bgfx backend does not supply per-vertex extension attributes yet\n" ) );
+	}
+
+	std::string vertexStage = prefix + vertexSource;
+
+	if ( isInstanced )
+	{
+		vertexStage = AddInstanceInputs( vertexStage, GetInstanceStride( extensionList ) / kInstanceVectorSize );
+	}
+
+	const bgfx::Memory* vertexBlob = CompileStage( vertexStage, BgfxShaderCompiler::kVertex, "corona.vs" );
 
 	if ( !vertexBlob )
 	{
@@ -195,10 +411,24 @@ BgfxProgram::Create( CPUResource* resource )
 	Rtt_ASSERT( CPUResource::kProgram == resource->GetType() );
 	Program* program = static_cast< Program* >( resource );
 
-	// Only the unmasked variant is built up front. The others are compiled the
-	// first time masking actually asks for them, which matters more here than
-	// under GL: every variant is a full run of the compiler.
-	Build( *program, Program::kMaskCount0, fData[Program::kMaskCount0] );
+	fResource = program;
+
+	// See the note in BgfxTexture::Create: a resource is built on demand when a
+	// draw reaches it before Corona's create queue does, and then asked for
+	// again when that queue comes round -- and, since BindProgram goes through
+	// the same path, once per draw after that. Rebuilding would recompile the
+	// shaders and leak the program every one of those times.
+	if ( bgfx::isValid( fData[Program::kMaskCount0].fProgram ) || fBuildFailed[Program::kMaskCount0] )
+	{
+		return;
+	}
+
+	// Only the unmasked variant is built up front; GetProgram compiles the
+	// masked ones the first time a draw asks for them.
+	if ( !Build( *program, Program::kMaskCount0, fData[Program::kMaskCount0] ) )
+	{
+		fBuildFailed[Program::kMaskCount0] = true;
+	}
 }
 
 void
@@ -207,15 +437,24 @@ BgfxProgram::Update( CPUResource* resource )
 	Rtt_ASSERT( CPUResource::kProgram == resource->GetType() );
 	Program* program = static_cast< Program* >( resource );
 
+	fResource = program;
+
 	// The source changed, so every variant already built is stale.
 	for ( U32 i = 0; i < Program::kNumVersions; ++i )
 	{
+		// A variant that failed to compile gets another chance: the new source
+		// may well be what fixes it.
+		fBuildFailed[i] = false;
+
 		if ( bgfx::isValid( fData[i].fProgram ) )
 		{
 			bgfx::destroy( fData[i].fProgram );
 			fData[i].fProgram = BGFX_INVALID_HANDLE;
 
-			Build( *program, Program::Version( i ), fData[i] );
+			if ( !Build( *program, Program::Version( i ), fData[i] ) )
+			{
+				fBuildFailed[i] = true;
+			}
 		}
 	}
 }
@@ -223,8 +462,12 @@ BgfxProgram::Update( CPUResource* resource )
 void
 BgfxProgram::Destroy()
 {
+	fResource = NULL;
+
 	for ( U32 i = 0; i < Program::kNumVersions; ++i )
 	{
+		fBuildFailed[i] = false;
+
 		if ( bgfx::isValid( fData[i].fProgram ) )
 		{
 			bgfx::destroy( fData[i].fProgram );
@@ -243,9 +486,20 @@ BgfxProgram::Destroy()
 }
 
 bgfx::ProgramHandle
-BgfxProgram::GetProgram( Program::Version version ) const
+BgfxProgram::GetProgram( Program::Version version )
 {
 	Rtt_ASSERT( version < Program::kNumVersions );
+
+	// The masked variants are only worth their compile once something is
+	// actually drawn through a mask, which is what this call means.
+	if ( !bgfx::isValid( fData[version].fProgram ) && !fBuildFailed[version] && fResource )
+	{
+		if ( !Build( *fResource, version, fData[version] ) )
+		{
+			fBuildFailed[version] = true;
+		}
+	}
+
 	return fData[version].fProgram;
 }
 

@@ -46,7 +46,7 @@ local precision =
 shell.vertex =
 [[
 $input a_position, a_texcoord0, a_color0, a_texcoord1
-$output v_TexCoordIn, v_ColorScaleIn, v_UserDataIn, v_PositionIn
+$output v_TexCoordIn, v_ColorScaleIn, v_UserDataIn, v_PositionIn, v_MaskUV0In, v_MaskUV1In, v_MaskUV2In
 
 #include <bgfx_shader.sh>
 ]] .. precision ..
@@ -58,16 +58,52 @@ uniform vec4 u_ContentScale;
 
 uniform mat4 u_ViewProjectionMatrix;
 
+// Corona binds these as 3x3 matrices, the same as it does for the other
+// backends: a mask is an affine transform of the vertex position into the
+// mask texture's own space.
 #if MASK_COUNT > 0
-	uniform mat4 u_MaskMatrix0;
+	uniform mat3 u_MaskMatrix0;
 #endif
 
 #if MASK_COUNT > 1
-	uniform mat4 u_MaskMatrix1;
+	uniform mat3 u_MaskMatrix1;
 #endif
 
 #if MASK_COUNT > 2
-	uniform mat4 u_MaskMatrix2;
+	uniform mat3 u_MaskMatrix2;
+#endif
+
+// Per-instance data, which bgfx delivers as vec4s named i_data0 and up. How
+// many of them there are is decided per program, by the vertex extension the
+// effect was defined with; BgfxProgram both sets this and splices the matching
+// names into the $input line above.
+//
+// They are copied into globals for the same reason the varyings are: on the
+// HLSL, SPIR-V and Metal paths bgfx passes attributes as parameters of main(),
+// which puts them out of reach of a kernel. The Corona<Name> macros a kernel
+// uses point at these copies.
+#ifndef CORONA_INSTANCE_VECTORS
+#	define CORONA_INSTANCE_VECTORS 0
+#endif
+
+#if CORONA_INSTANCE_VECTORS > 0
+	CORONA_GLOBAL vec4 CoronaInstanceData0;
+#endif
+
+#if CORONA_INSTANCE_VECTORS > 1
+	CORONA_GLOBAL vec4 CoronaInstanceData1;
+#endif
+
+#if CORONA_INSTANCE_VECTORS > 2
+	CORONA_GLOBAL vec4 CoronaInstanceData2;
+#endif
+
+#if CORONA_INSTANCE_VECTORS > 3
+	CORONA_GLOBAL vec4 CoronaInstanceData3;
+#endif
+
+#if CORONA_INSTANCE_VECTORS > 4
+	CORONA_GLOBAL vec4 CoronaInstanceData4;
 #endif
 
 #define CoronaVertexUserData a_texcoord1
@@ -88,9 +124,47 @@ void main()
 	v_ColorScaleIn = a_color0;
 	v_UserDataIn = a_texcoord1;
 
+	#if CORONA_INSTANCE_VECTORS > 0
+		CoronaInstanceData0 = i_data0;
+	#endif
+
+	#if CORONA_INSTANCE_VECTORS > 1
+		CoronaInstanceData1 = i_data1;
+	#endif
+
+	#if CORONA_INSTANCE_VECTORS > 2
+		CoronaInstanceData2 = i_data2;
+	#endif
+
+	#if CORONA_INSTANCE_VECTORS > 3
+		CoronaInstanceData3 = i_data3;
+	#endif
+
+	#if CORONA_INSTANCE_VECTORS > 4
+		CoronaInstanceData4 = i_data4;
+	#endif
+
 	P_POSITION vec2 position = VertexKernel( a_position.xy );
 
 	v_PositionIn = position;
+
+	// Unused mask channels still have to be written: leaving an output
+	// undefined is not something every backend tolerates.
+	v_MaskUV0In = vec2( 0.0, 0.0 );
+	v_MaskUV1In = vec2( 0.0, 0.0 );
+	v_MaskUV2In = vec2( 0.0, 0.0 );
+
+	#if MASK_COUNT > 0
+		v_MaskUV0In = mul( u_MaskMatrix0, vec3( position, 1.0 ) ).xy;
+	#endif
+
+	#if MASK_COUNT > 1
+		v_MaskUV1In = mul( u_MaskMatrix1, vec3( position, 1.0 ) ).xy;
+	#endif
+
+	#if MASK_COUNT > 2
+		v_MaskUV2In = mul( u_MaskMatrix2, vec3( position, 1.0 ) ).xy;
+	#endif
 
 	gl_Position = mul( u_ViewProjectionMatrix, vec4( position, 0.0, 1.0 ) );
 }
@@ -98,7 +172,7 @@ void main()
 
 shell.fragment =
 [[
-$input v_TexCoordIn, v_ColorScaleIn, v_UserDataIn, v_PositionIn
+$input v_TexCoordIn, v_ColorScaleIn, v_UserDataIn, v_PositionIn, v_MaskUV0In, v_MaskUV1In, v_MaskUV2In
 
 #include <bgfx_shader.sh>
 ]] .. precision ..
@@ -151,6 +225,20 @@ void main()
 	v_Position = v_PositionIn;
 
 	P_COLOR vec4 result = FragmentKernel( v_TexCoord );
+
+	// A mask texture is single-channel: its red channel scales the result, so
+	// the transparent parts of the mask erase what the kernel produced.
+	#if MASK_COUNT > 0
+		result *= texture2D( u_MaskSampler0, v_MaskUV0In ).r;
+	#endif
+
+	#if MASK_COUNT > 1
+		result *= texture2D( u_MaskSampler1, v_MaskUV1In ).r;
+	#endif
+
+	#if MASK_COUNT > 2
+		result *= texture2D( u_MaskSampler2, v_MaskUV2In ).r;
+	#endif
 
 	gl_FragColor = result;
 }

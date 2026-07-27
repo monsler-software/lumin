@@ -10,6 +10,7 @@
 #include "Core/Rtt_Build.h"
 #include "Rtt_LinuxDevice.h"
 #include <sys/utsname.h>
+#include <SDL2/SDL.h>
 
 namespace Rtt
 {
@@ -193,6 +194,28 @@ namespace Rtt
 	DeviceOrientation::Type LinuxDevice::GetOrientation() const
 	{
 		return fOrientation;
+	}
+
+	Real LinuxDevice::GetScreenDpi() const
+	{
+		// A testing override, since the highdpi path is otherwise unreachable
+		// on an ordinary 96 dpi monitor.
+		if (const char* forced = getenv("LUMIN_FORCE_DPI"))
+		{
+			return Rtt_FloatToReal((float)atof(forced));
+		}
+
+		// Diagonal DPI, which is what SDL reports most consistently across the
+		// X11 and Wayland backends. A display that does not report its physical
+		// size gives 0, and the caller then renders one unit per pixel.
+		float diagonal = 0.0f;
+
+		if (SDL_GetDisplayDPI(0, &diagonal, NULL, NULL) != 0)
+		{
+			return Rtt_REAL_0;
+		}
+
+		return Rtt_FloatToReal(diagonal);
 	}
 
 	const char* LinuxDevice::GetPlatform() const

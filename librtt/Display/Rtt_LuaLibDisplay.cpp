@@ -1973,6 +1973,11 @@ DisplayLibrary::getDefault( lua_State *L )
         bool value = defaults.IsAnchorClamped();
         lua_pushboolean( L, value ? 1 : 0 );
     }
+    else if ( ( Rtt_StringCompare( key, "highdpi" ) == 0 ) )
+    {
+        bool value = defaults.IsHighDpi();
+        lua_pushboolean( L, value ? 1 : 0 );
+    }
     else if ( ( Rtt_StringCompare( key, "isImageSheetSampledInsideFrame" ) == 0 ) )
     {
         bool value = defaults.IsImageSheetSampledInsideFrame();
@@ -2164,6 +2169,24 @@ DisplayLibrary::setDefault( lua_State *L )
     {
         bool value = lua_toboolean( L, index ) ? true : false;
         defaults.SetAnchorClamped( value );
+    }
+    else if ( ( Rtt_StringCompare( key, "highdpi" ) == 0 ) )
+    {
+        bool value = lua_toboolean( L, index ) ? true : false;
+
+        if ( value != defaults.IsHighDpi() )
+        {
+            defaults.SetHighDpi( value );
+
+            // The content size is derived from this, so the display has to be
+            // rebuilt around it and content told its bounds moved -- the same
+            // path a window resize takes.
+            display.UpdateNativeContentSize();
+            display.Restart();
+            display.Invalidate();
+
+            display.GetRuntime().DispatchEvent( ResizeEvent() );
+        }
     }
     else if ( ( Rtt_StringCompare( key, "isImageSheetSampledInsideFrame" ) == 0 ) )
     {

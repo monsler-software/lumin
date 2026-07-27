@@ -45,6 +45,7 @@ namespace Rtt
 		virtual DeviceOrientation::Type GetOrientation() const override;
 		virtual const char *GetPlatform() const override;
 		virtual const char *GetManufacturer() const override;
+		virtual Real GetScreenDpi() const override;
 
 	private:
 		Rtt_Allocator &fAllocator;

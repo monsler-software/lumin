@@ -292,6 +292,17 @@ class Display
         // Implicitly calls UpdateContentScale()
         virtual void WindowSizeChanged();
 
+        // Content is rendered at the window's own resolution, so the content
+        // size follows the surface rather than anything config.lua asked for:
+        // no letterboxing, no zoom, nothing stretched. The highdpi default
+        // divides it by the screen's density instead, which leaves objects the
+        // same physical size on a dense screen rather than the same pixel size.
+        void UpdateNativeContentSize();
+
+        // The factor content units are magnified by on screen: 1 unless the
+        // highdpi default is set, in which case it follows the screen's DPI.
+        Rtt_Real GetNativeContentScale() const;
+
         // Detects if the device width/height of the surface has changed compared to the stream's device width/height.
         // Returns true if they defer, meaning that the caller should then call WindowSizeChanged() to update content scales.
         virtual bool HasWindowSizeChanged() const;

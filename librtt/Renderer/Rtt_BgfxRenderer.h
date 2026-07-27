@@ -10,6 +10,7 @@
 #ifndef _Rtt_BgfxRenderer_H__
 #define _Rtt_BgfxRenderer_H__
 
+#include "Renderer/Rtt_BgfxDrawState.h"
 #include "Renderer/Rtt_Renderer.h"
 #include "Renderer/Rtt_BgfxSurfaceParams.h"
 #include "Renderer/Rtt_Texture.h"
@@ -58,6 +59,10 @@ class BgfxRenderer : public Renderer
 		static U16 GetBuiltInUniformElementCount( U32 index, U32 sizeInBytes );
 		bgfx::UniformHandle GetNamedUniform( const char* name, U32 sizeInBytes );
 
+		// The binding state both command buffers submit through; see the note
+		// on BgfxDrawState for why it is shared rather than per buffer.
+		BgfxDrawState& GetDrawState() { return fDrawState; }
+
 		// Render-to-texture takes a view id per target, handed out for the
 		// frame and reclaimed when it ends.
 		bgfx::ViewId AcquireViewId();
@@ -70,10 +75,25 @@ class BgfxRenderer : public Renderer
 		void CreateUniforms();
 		void DestroyUniforms();
 
+		// The staging texture a readback goes through, since bgfx can only read
+		// a texture that was created for it. Grown to fit and kept between
+		// captures, which are rare but usually repeated (a capture per frame in
+		// a recorder, say).
+		bool EnsureReadBackTexture( U16 width, U16 height, bgfx::TextureFormat::Enum format );
+		void DestroyReadBackTexture();
+
 		BgfxSurfaceParams fParams;
+		BgfxDrawState fDrawState;
 		bool fInitialized;
 
 		bgfx::ViewId fNextViewId;
+
+		bgfx::TextureHandle fReadBackTexture;
+		U16 fReadBackWidth;
+		U16 fReadBackHeight;
+		bgfx::TextureFormat::Enum fReadBackFormat;
+		U8* fReadBackBuffer;
+		U32 fReadBackBufferSize;
 
 		bgfx::UniformHandle fSamplerUniforms[Texture::kNumUnits];
 		bgfx::UniformHandle fBuiltInUniforms[Uniform::kNumBuiltInVariables];

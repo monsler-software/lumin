@@ -34,6 +34,13 @@ BgfxFrameBufferObject::Create( CPUResource* resource )
 	Rtt_ASSERT( CPUResource::kFrameBufferObject == resource->GetType() );
 	FrameBufferObject* fbo = static_cast< FrameBufferObject* >( resource );
 
+	// See the note in BgfxTexture::Create: this may already have been built on
+	// demand before Corona's create queue got to it.
+	if ( bgfx::isValid( fFrameBuffer ) )
+	{
+		return;
+	}
+
 	Texture* texture = fbo->GetTexture();
 
 	if ( !texture )
@@ -46,7 +53,16 @@ BgfxFrameBufferObject::Create( CPUResource* resource )
 	// afterwards, which is the whole point of a Corona snapshot or canvas.
 	BgfxTexture* bgfxTexture = static_cast< BgfxTexture* >( texture->GetGPUResource() );
 
-	if ( !bgfxTexture || !bgfx::isValid( bgfxTexture->GetTexture() ) )
+	if ( !bgfxTexture )
+	{
+		return;
+	}
+
+	// bgfx only accepts an attachment that was created as a render target, and
+	// Corona created this one as an ordinary texture.
+	bgfxTexture->AddFlags( BGFX_TEXTURE_RT );
+
+	if ( !bgfx::isValid( bgfxTexture->GetTexture() ) )
 	{
 		return;
 	}

@@ -73,6 +73,14 @@ class DisplayDefaults
 		void SetExternalTextureRetina( bool newValue ) { fIsExternalTextureRetina = newValue; }
 
 	public:
+        // Content is rendered at the window's own resolution: one content unit
+        // is one pixel. With this set, one content unit becomes one
+        // device-independent unit instead, so that objects keep their physical
+        // size on a high-density screen. See Display::UpdateNativeContentSize.
+        bool IsHighDpi() const { return fHighDpi; }
+        void SetHighDpi( bool newValue ) { fHighDpi = newValue; }
+
+	public:
 		bool IsV1Compatibility() const { return fV1Compatibility; }
 		void SetV1Compatibility( bool newValue ) { fV1Compatibility = newValue; }
 
@@ -135,6 +143,7 @@ class DisplayDefaults
         U8 fWrapX;
         U8 fWrapY;
 		U8 fEmitterMapping;
+        bool fHighDpi;
         bool fV1Compatibility;
         bool fPreloadTextures;
         bool fIsNativeTextFieldFontSizeScaled;

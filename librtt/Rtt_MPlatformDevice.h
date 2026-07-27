@@ -119,6 +119,13 @@ class MPlatformDevice
 
 	public:
 		virtual DeviceOrientation::Type GetOrientation() const = 0;
+
+	public:
+		// Physical pixels per inch of the screen the app is on, or 0 where the
+		// platform will not say. Only the highdpi display default reads this,
+		// and it falls back to rendering one content unit per pixel, so a
+		// platform that cannot answer is not obliged to.
+		virtual Real GetScreenDpi() const { return Rtt_REAL_0; }
 };
 
 // Use this to implement MPlatformDevice::DoesNotify

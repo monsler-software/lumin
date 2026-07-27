@@ -42,6 +42,7 @@
 #include "Rtt_GPUStream.h"
 
 // TODO: Remove dependency on Runtime's MCachedResourceLibrary interface
+#include "Rtt_MPlatformDevice.h"
 #include "Rtt_Runtime.h"
 
 #define ENABLE_DEBUG_PRINT    0
@@ -503,6 +504,12 @@ Display::ReadRenderingConfig( lua_State *L, int index, ProgramHeader& programHea
 
         fStream->SetContentAlignment( xAlign, yAlign );
     }
+
+    // Whatever config.lua asked for in the way of a content size and a scale
+    // mode, the app renders at the window's own resolution. The width, height
+    // and scale keys still shape everything read above -- the image suffix
+    // table in particular -- but they no longer decide what is drawn where.
+    UpdateNativeContentSize();
 
     Rtt_ASSERT( 1 == lua_gettop( L ) );
 }
@@ -1731,6 +1738,91 @@ Display::WindowDidRotate( DeviceOrientation::Type newOrientation, bool isNewOrie
     runtime.End();
 }
 
+// The density a content unit is drawn at. 96 dpi is the baseline every desktop
+// platform calls "100%", so a screen at that density renders one unit per
+// pixel and matches the default path exactly.
+Rtt_Real
+Display::GetNativeContentScale() const
+{
+    if ( !GetDefaults().IsHighDpi() )
+    {
+        return Rtt_REAL_1;
+    }
+
+    const Rtt_Real dpi = GetRuntime().Platform().GetDevice().GetScreenDpi();
+
+    if ( dpi <= Rtt_REAL_0 )
+    {
+        return Rtt_REAL_1; // the platform does not know; stay at native pixels
+    }
+
+    Rtt_Real scale = Rtt_RealDiv( dpi, Rtt_IntToReal( 96 ) );
+
+    // Beyond these a display is misreporting itself, and content would end up
+    // unusably large or small.
+    const Rtt_Real kMinScale = Rtt_FloatToReal( 0.5f );
+    const Rtt_Real kMaxScale = Rtt_FloatToReal( 8.0f );
+
+    if ( scale < kMinScale )
+    {
+        scale = kMinScale;
+    }
+    else if ( scale > kMaxScale )
+    {
+        scale = kMaxScale;
+    }
+
+    return scale;
+}
+
+void
+Display::UpdateNativeContentSize()
+{
+    if ( !fStream || !fTarget )
+    {
+        return;
+    }
+
+    S32 screenW = fTarget->DeviceWidth();
+    S32 screenH = fTarget->DeviceHeight();
+
+    if ( screenW <= 0 || screenH <= 0 )
+    {
+        return;
+    }
+
+    S32 contentW = screenW;
+    S32 contentH = screenH;
+
+    const Rtt_Real scale = GetNativeContentScale();
+    const bool isScaled = scale != Rtt_REAL_1;
+
+    if ( isScaled )
+    {
+        contentW = Rtt_RealToInt( Rtt_RealDiv( Rtt_IntToReal( screenW ), scale ) );
+        contentH = Rtt_RealToInt( Rtt_RealDiv( Rtt_IntToReal( screenH ), scale ) );
+
+        contentW = Max( contentW, (S32)1 );
+        contentH = Max( contentH, (S32)1 );
+    }
+
+    if ( DeviceOrientation::IsSideways( fStream->GetContentOrientation() ) )
+    {
+        Swap( contentW, contentH );
+    }
+
+    fStream->Preinitialize( contentW, contentH );
+
+    // kZoomStretch over a content size that is the screen divided by the same
+    // factor in both directions is a uniform magnification: the aspect ratio is
+    // the screen's own, so nothing is stretched and nothing is cropped. Without
+    // highdpi it is the identity, which is what kNone already means.
+    fStream->SetScaleMode(
+        isScaled ? kZoomStretch : kNone,
+        Rtt_IntToReal( screenW ),
+        Rtt_IntToReal( screenH ) );
+}
+
 void
 Display::WindowSizeChanged()
 {
@@ -1757,28 +1849,9 @@ Display::WindowSizeChanged()
                 Swap( screenW, screenH );
             }
 
-            // For these scale modes, the content width and height change when the window size changes.
-            Rtt::Display::ScaleMode scaleMode = stream->GetScaleMode();
-            if ( ( Display::kNone == scaleMode ) || ( Display::kAdaptive == scaleMode ) )
-            {
-                S32 contentWidth;
-                S32 contentHeight;
-                if ( Display::kAdaptive == scaleMode )
-                {
-                    contentWidth = fTarget->AdaptiveWidth();
-                    contentHeight = fTarget->AdaptiveHeight();
-                }
-                else
-                {
-                    contentWidth = fTarget->DeviceWidth();
-                    contentHeight = fTarget->DeviceHeight();
-                }
-                if ( DeviceOrientation::IsSideways( orientation ) )
-                {
-                    Swap( contentWidth, contentHeight );
-                }
-                stream->Preinitialize( contentWidth, contentHeight );
-            }
+            // Content follows the window: it is the window's own resolution,
+            // or that divided by the screen's density under highdpi.
+            UpdateNativeContentSize();
 
             // Update the display's content scales using the new widths and heights up above.
             stream->UpdateContentScale( screenW, screenH );

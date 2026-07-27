@@ -43,6 +43,7 @@ DisplayDefaults::DisplayDefaults()
 	fWrapX( RenderTypes::kClampToEdgeWrap ),
 	fWrapY( RenderTypes::kClampToEdgeWrap ),
 	fEmitterMapping( 0 ),
+	fHighDpi( false ),
 	fV1Compatibility( false ),
 	fPreloadTextures( true ),
 	fIsNativeTextFieldFontSizeScaled( true ),

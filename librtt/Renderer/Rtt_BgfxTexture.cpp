@@ -77,8 +77,35 @@ BgfxTexture::BgfxTexture()
 :	fTexture( BGFX_INVALID_HANDLE ),
 	fWidth( 0 ),
 	fHeight( 0 ),
-	fFormat( bgfx::TextureFormat::RGBA8 )
+	fFormat( bgfx::TextureFormat::RGBA8 ),
+	fFlags( BGFX_TEXTURE_NONE )
 {
+}
+
+void
+BgfxTexture::AddFlags( U64 flags )
+{
+	if ( flags == ( fFlags & flags ) )
+	{
+		return; // already created with everything asked for
+	}
+
+	fFlags |= flags;
+
+	if ( 0 == fWidth || 0 == fHeight )
+	{
+		return; // Create has not run yet; it will pick the flags up
+	}
+
+	// The pixels are not preserved, which is what makes this cheap enough to
+	// do lazily: a texture that acquires these flags is a render target or a
+	// capture destination, and its contents come from the GPU either way.
+	if ( bgfx::isValid( fTexture ) )
+	{
+		bgfx::destroy( fTexture );
+	}
+
+	fTexture = bgfx::createTexture2D( fWidth, fHeight, false, 1, fFormat, fFlags );
 }
 
 void
@@ -86,6 +113,15 @@ BgfxTexture::Create( CPUResource* resource )
 {
 	Rtt_ASSERT( CPUResource::kTexture == resource->GetType() );
 	Texture* texture = static_cast< Texture* >( resource );
+
+	// Corona creates GPU resources in a queue it flushes once a frame, but this
+	// backend issues its work as it is recorded, so anything used before that
+	// flush is created on the spot -- and then asked for again when the queue
+	// does come round. Nothing to do the second time.
+	if ( bgfx::isValid( fTexture ) )
+	{
+		return;
+	}
 
 	fWidth = U16( texture->GetWidth() );
 	fHeight = U16( texture->GetHeight() );
@@ -96,7 +132,9 @@ BgfxTexture::Create( CPUResource* resource )
 		return;
 	}
 
-	const U8* data = texture->GetData();
+	// bgfx rejects initial contents for a render target, which the GPU fills
+	// anyway.
+	const U8* data = ( fFlags & BGFX_TEXTURE_RT ) ? NULL : texture->GetData();
 
 	// Sampler state is supplied per draw call, so none of it is baked in here.
 	fTexture = bgfx::createTexture2D(
@@ -105,7 +143,7 @@ BgfxTexture::Create( CPUResource* resource )
 		, false // no mips: Corona's texture resources do not carry a mip chain
 		, 1
 		, fFormat
-		, BGFX_TEXTURE_NONE
+		, fFlags
 		, data ? bgfx::copy( data, texture->GetSizeInBytes() ) : NULL
 		);
 

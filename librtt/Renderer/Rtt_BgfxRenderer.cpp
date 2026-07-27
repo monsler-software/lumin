@@ -15,6 +15,9 @@
 #include "Renderer/Rtt_BgfxProgram.h"
 #include "Renderer/Rtt_BgfxTexture.h"
 #include "Renderer/Rtt_CPUResource.h"
+#include "Renderer/Rtt_FrameBufferObject.h"
+
+#include "Display/Rtt_BufferBitmap.h"
 
 #include "Core/Rtt_Assert.h"
 #include "Core/Rtt_String.h"
@@ -54,10 +57,15 @@ BuiltInUniformType( U32 index )
 	switch ( index )
 	{
 		case Uniform::kViewProjectionMatrix:
+			return bgfx::UniformType::Mat4;
+
+		// Corona stores these as 3x3 affine transforms, and that is what the
+		// shell declares; passing them as Mat4 would read past the end of the
+		// uniform's 9 floats.
 		case Uniform::kMaskMatrix0:
 		case Uniform::kMaskMatrix1:
 		case Uniform::kMaskMatrix2:
-			return bgfx::UniformType::Mat4;
+			return bgfx::UniformType::Mat3;
 
 		default:
 			// bgfx has no scalar uniform type: the single-float built-ins
@@ -82,7 +90,13 @@ BgfxRenderer::BgfxRenderer( Rtt_Allocator* allocator, const BgfxSurfaceParams& p
 :	Super( allocator ),
 	fParams( params ),
 	fInitialized( false ),
-	fNextViewId( 1 ) // view 0 is the window
+	fNextViewId( 1 ), // view 0 is the window
+	fReadBackTexture( BGFX_INVALID_HANDLE ),
+	fReadBackWidth( 0 ),
+	fReadBackHeight( 0 ),
+	fReadBackFormat( bgfx::TextureFormat::RGBA8 ),
+	fReadBackBuffer( NULL ),
+	fReadBackBufferSize( 0 )
 {
 	for ( U32 i = 0; i < Texture::kNumUnits; ++i )
 	{
@@ -111,6 +125,8 @@ BgfxRenderer::~BgfxRenderer()
 		DestroyGPUResources();
 
 		DestroyUniforms();
+
+		DestroyReadBackTexture();
 
 		bgfx::shutdown();
 	}
@@ -263,7 +279,10 @@ BgfxRenderer::GetBuiltInUniform( U32 index )
 U16
 BgfxRenderer::GetBuiltInUniformElementCount( U32 index, U32 sizeInBytes )
 {
-	if ( bgfx::UniformType::Mat4 == BuiltInUniformType( index ) )
+	const bgfx::UniformType::Enum type = BuiltInUniformType( index );
+
+	// A matrix uniform is one element, however many vectors it occupies.
+	if ( bgfx::UniformType::Mat4 == type || bgfx::UniformType::Mat3 == type )
 	{
 		return 1;
 	}
@@ -314,13 +333,181 @@ BgfxRenderer::ResetViewIds()
 	fNextViewId = 1;
 }
 
+bool
+BgfxRenderer::EnsureReadBackTexture( U16 width, U16 height, bgfx::TextureFormat::Enum format )
+{
+	if ( bgfx::isValid( fReadBackTexture )
+	  && width == fReadBackWidth
+	  && height == fReadBackHeight
+	  && format == fReadBackFormat )
+	{
+		return true;
+	}
+
+	DestroyReadBackTexture();
+
+	const bgfx::Caps* caps = bgfx::getCaps();
+
+	if ( !caps || 0 == ( caps->supported & BGFX_CAPS_TEXTURE_READ_BACK ) )
+	{
+		Rtt_LogException( "ERROR: this renderer cannot read pixels back from the GPU, so the capture is empty\n" );
+		return false;
+	}
+
+	fReadBackTexture = bgfx::createTexture2D(
+		  width
+		, height
+		, false
+		, 1
+		, format
+		, BGFX_TEXTURE_READ_BACK | BGFX_TEXTURE_BLIT_DST
+		);
+
+	if ( !bgfx::isValid( fReadBackTexture ) )
+	{
+		return false;
+	}
+
+	bgfx::TextureInfo info;
+	bgfx::calcTextureSize( info, width, height, 1, false, false, 1, format );
+
+	fReadBackBuffer = static_cast< U8* >( malloc( info.storageSize ) );
+	fReadBackBufferSize = info.storageSize;
+
+	if ( !fReadBackBuffer )
+	{
+		DestroyReadBackTexture();
+		return false;
+	}
+
+	fReadBackWidth = width;
+	fReadBackHeight = height;
+	fReadBackFormat = format;
+
+	return true;
+}
+
+void
+BgfxRenderer::DestroyReadBackTexture()
+{
+	if ( bgfx::isValid( fReadBackTexture ) )
+	{
+		bgfx::destroy( fReadBackTexture );
+		fReadBackTexture = BGFX_INVALID_HANDLE;
+	}
+
+	free( fReadBackBuffer );
+
+	fReadBackBuffer = NULL;
+	fReadBackBufferSize = 0;
+	fReadBackWidth = 0;
+	fReadBackHeight = 0;
+}
+
+// Corona's capture API is synchronous: display.save and display.captureScreen
+// hand back a finished image. bgfx readback is not -- it names the frame the
+// pixels will be ready in -- so this drives frames until that one arrives. The
+// cost is a couple of extra presents at the moment a capture is taken, which
+// is what a synchronous readback costs on any modern API.
 void
 BgfxRenderer::CaptureFrameBuffer( RenderingStream & stream, BufferBitmap & bitmap, S32 x_in_pixels, S32 y_in_pixels, S32 w_in_pixels, S32 h_in_pixels )
 {
-	// bgfx::readTexture reports back two frames later, which display.save and
-	// display.captureScreen expect to have finished on return. Wiring that up
-	// means giving those a completion path they do not have today.
-	Rtt_ASSERT_NOT_IMPLEMENTED();
+	if ( w_in_pixels <= 0 || h_in_pixels <= 0 )
+	{
+		return;
+	}
+
+	FrameBufferObject* fbo = GetFrameBufferObject();
+
+	// Corona always renders a capture into a framebuffer of its own before
+	// asking for it, so there is nothing sensible to read otherwise: bgfx
+	// cannot read the window's backbuffer.
+	if ( !fbo || !fbo->GetTexture() )
+	{
+		Rtt_LogException( "ERROR: the bgfx backend can only capture from a framebuffer, not from the window\n" );
+		return;
+	}
+
+	BgfxTexture* source = static_cast< BgfxTexture* >( fbo->GetTexture()->GetGPUResource() );
+
+
+	if ( !source || !bgfx::isValid( source->GetTexture() ) )
+	{
+		return;
+	}
+
+	const U16 width = U16( w_in_pixels );
+	const U16 height = U16( h_in_pixels );
+
+	if ( !EnsureReadBackTexture( width, height, source->GetFormat() ) )
+	{
+		return;
+	}
+
+	// The blit is work for the next frame, since the frame that drew the
+	// capture has already been submitted by the time this runs.
+	const bgfx::ViewId view = AcquireViewId();
+
+	bgfx::blit(
+		  view
+		, fReadBackTexture
+		, 0
+		, 0
+		, source->GetTexture()
+		, U16( x_in_pixels )
+		, U16( y_in_pixels )
+		, width
+		, height
+		);
+
+	const U32 frameAvailable = bgfx::readTexture( fReadBackTexture, fReadBackBuffer );
+
+	// bgfx::frame() returns the number of the frame just submitted, so this
+	// stops as soon as the one carrying the readback has gone through.
+	for ( U32 frame = bgfx::frame(); frame < frameAvailable; frame = bgfx::frame() )
+	{
+	}
+
+	ResetViewIds();
+
+	void* destination = bitmap.WriteAccess();
+
+	if ( !destination )
+	{
+		return;
+	}
+
+	const U32 bytesPerPixel = U32( PlatformBitmap::BytesPerPixel( bitmap.GetFormat() ) );
+	const U32 bitmapBytes = U32( bitmap.Width() * bitmap.Height() ) * bytesPerPixel;
+
+	const bgfx::Caps* caps = bgfx::getCaps();
+
+	// Corona expects what glReadPixels gives it: rows from the bottom up, since
+	// that is the convention its offscreen projection is built for. bgfx hands
+	// back the texture in its own memory order, which is bottom-up only on the
+	// backends whose textures start at the bottom left -- OpenGL. Everywhere
+	// else the rows arrive top-down and have to be turned over, or the capture
+	// comes out upside down.
+	if ( caps && !caps->originBottomLeft )
+	{
+		const U32 rowBytes = Min( U32( bitmap.Width() ) * bytesPerPixel, U32( fReadBackWidth ) * bytesPerPixel );
+		const U32 rows = Min( U32( bitmap.Height() ), U32( fReadBackHeight ) );
+
+		U8* dst = static_cast< U8* >( destination );
+
+		for ( U32 row = 0; row < rows; ++row )
+		{
+			memcpy(
+				  dst + ( rows - 1 - row ) * U32( bitmap.Width() ) * bytesPerPixel
+				, fReadBackBuffer + row * U32( fReadBackWidth ) * bytesPerPixel
+				, rowBytes
+				);
+		}
+
+		return;
+	}
+
+	memcpy( destination, fReadBackBuffer, Min( fReadBackBufferSize, bitmapBytes ) );
 }
 
 GPUResource*

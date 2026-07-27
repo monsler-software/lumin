@@ -27,6 +27,7 @@
 #include "Rtt_Archive.h"
 #include "Display/Rtt_Display.h"
 #include "Display/Rtt_DisplayDefaults.h"
+#include "Renderer/Rtt_Renderer.h"
 #include "Rtt_Freetype.h"
 #include "Rtt_LuaLibSimulator.h"
 #include "Rtt_LinuxSimulatorView.h"
@@ -464,6 +465,17 @@ namespace Rtt
 		if (fBeginRunLoop)
 		{
 			fBeginRunLoop = false;
+
+			// The window is finally as it will be: sized, and with whatever
+			// menu bar it is going to have. A resize event that arrived while
+			// it was still being put together may have measured either of
+			// those before they settled, and nothing sends a second one.
+			{
+				int w, h;
+				SDL_GetWindowSize(fWindow, &w, &h);
+				OnSurfaceResized(w, h - app->GetMenuHeight());
+			}
+
 			fRuntime->BeginRunLoop();
 		}
 
@@ -545,6 +557,31 @@ namespace Rtt
 		fRuntime->DispatchEvent(ResizeEvent());
 
 		// todo: refresh native elements
+	}
+
+	void SolarAppContext::OnSurfaceResized(int w, int h)
+	{
+		if (w <= 0 || h <= 0 || fRuntime == NULL)
+		{
+			return;
+		}
+
+		if (w == GetWidth() && h == GetHeight())
+		{
+			return;
+		}
+
+		// The screen surface reports these back to Corona, so they have to be
+		// updated before anything asks the display for the new size.
+		SetWidth(w);
+		SetHeight(h);
+
+		// Backends that own their swapchain (bgfx) would otherwise keep
+		// presenting at the old size.
+		fRuntime->GetDisplay().GetRenderer().SetSurfaceSize(w, h);
+
+		// Recomputes the content scale and projection, then tells Lua about it.
+		RestartRenderer();
 	}
 
 	string SolarAppContext::GetTitle() const

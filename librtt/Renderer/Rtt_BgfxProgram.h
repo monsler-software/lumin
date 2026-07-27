@@ -21,6 +21,8 @@
 namespace Rtt
 {
 
+class FormatExtensionList;
+
 // ----------------------------------------------------------------------------
 
 // A Corona program compiled for bgfx.
@@ -45,12 +47,28 @@ class BgfxProgram : public GPUResource
 
 		// Corona compiles one variant per active mask count, so that a kernel
 		// works under masking without the author writing anything for it.
-		bgfx::ProgramHandle GetProgram( Program::Version version ) const;
+		// Variants past the unmasked one are compiled the first time a masked
+		// draw asks for them, which matters more here than under GL: each one
+		// is a full run of the shader compiler.
+		bgfx::ProgramHandle GetProgram( Program::Version version );
 
 		bgfx::UniformHandle GetUniform( U32 index, Program::Version version ) const;
 
 		U32 GetUniformTimestamp( U32 index, Program::Version version ) const;
 		void SetUniformTimestamp( U32 index, Program::Version version, U32 timestamp );
+
+		// How Corona's per-instance data is laid out for bgfx, which carries it
+		// in a buffer of vec4s named i_data0 and up rather than in attributes of
+		// the shader's own choosing. Both the shader (which needs names) and the
+		// command buffer (which fills the buffer) derive their view from these,
+		// so the two cannot drift apart.
+		//
+		// Each instanced group starts on a vec4 boundary, and an attribute sits
+		// at its own offset inside its group.
+		enum { kInstanceVectorSize = 16, kMaxInstanceVectors = 5 };
+
+		static U32 GetInstanceGroupOffset( const FormatExtensionList* list, U32 groupIndex );
+		static U32 GetInstanceStride( const FormatExtensionList* list );
 
 	private:
 		struct VersionData
@@ -69,6 +87,15 @@ class BgfxProgram : public GPUResource
 		bool Build( Program& program, Program::Version version, VersionData& data );
 
 		VersionData fData[Program::kNumVersions];
+
+		// The source a variant is compiled from, kept so that variants can be
+		// built on demand rather than all at once. Owned by the display's
+		// resource pool, which outlives this.
+		Program* fResource;
+
+		// Set for a variant whose compile failed, so a draw that keeps asking
+		// for it does not keep re-running the compiler.
+		bool fBuildFailed[Program::kNumVersions];
 };
 
 // ----------------------------------------------------------------------------
