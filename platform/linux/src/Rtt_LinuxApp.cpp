@@ -21,6 +21,7 @@
 #include "Core/Rtt_FileSystem.h"
 #include "Rtt_Archive.h"
 #include "Display/Rtt_Display.h"
+#include "Renderer/Rtt_Renderer.h"
 #include "Display/Rtt_DisplayDefaults.h"
 #include "Rtt_Freetype.h"
 #include "Rtt_LuaLibSimulator.h"
@@ -340,6 +341,25 @@ namespace Rtt
 						int w, h;
 						GetWindowSize(&w, &h);
 						//		fContext->SetSize(w, h);
+
+						// Tell the backend the surface changed size. Backends
+						// whose context belongs to the window pick this up on
+						// their own and ignore it; bgfx owns its swapchain and
+						// would otherwise keep presenting at the old size.
+						//
+						// Computed here rather than through GetWindowSize,
+						// which subtracts the menu height with "=" where it
+						// means "-=" and so cannot report a usable height.
+						if (fContext != NULL && fContext->GetRuntime() != NULL)
+						{
+							SDL_GetWindowSize(fWindow, &w, &h);
+							h -= GetMenuHeight();
+
+							if (w > 0 && h > 0)
+							{
+								fContext->GetRuntime()->GetDisplay().GetRenderer().SetSurfaceSize(w, h);
+							}
+						}
 					}
 					break;
 				}

@@ -43,6 +43,8 @@ class BgfxRenderer : public Renderer
 
 		virtual void Initialize();
 
+		virtual void SetSurfaceSize( U32 width, U32 height );
+
 		virtual void CaptureFrameBuffer( RenderingStream & stream, BufferBitmap & bitmap, S32 x_in_pixels, S32 y_in_pixels, S32 w_in_pixels, S32 h_in_pixels );
 
 		// Uniform handles are per-name and shared across programs in bgfx, so

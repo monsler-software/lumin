@@ -102,6 +102,14 @@ BgfxRenderer::~BgfxRenderer()
 {
 	if ( fInitialized )
 	{
+		// Order matters, and differs from the other backends. There the
+		// graphics context outlives the renderer, so ~Renderer is free to
+		// release GPU resources after we return. Here bgfx::shutdown() below
+		// destroys the context, and bgfx::destroy() on a destroyed context
+		// dereferences null -- so everything holding a bgfx handle has to be
+		// released while we are still the most-derived object.
+		DestroyGPUResources();
+
 		DestroyUniforms();
 
 		bgfx::shutdown();
@@ -145,6 +153,31 @@ BgfxRenderer::Initialize()
 	CreateUniforms();
 
 	Super::Initialize();
+}
+
+void
+BgfxRenderer::SetSurfaceSize( U32 width, U32 height )
+{
+	if ( !fInitialized || 0 == width || 0 == height )
+	{
+		return;
+	}
+
+	if ( width == fParams.fWidth && height == fParams.fHeight )
+	{
+		return;
+	}
+
+	fParams.fWidth = width;
+	fParams.fHeight = height;
+
+	// Rebuilds the swapchain. bgfx defers the work to the next frame, so this
+	// is safe to call from the event loop.
+	bgfx::reset( width, height, BGFX_RESET_VSYNC );
+
+	// The window's view rect does not follow the reset, and views created for
+	// render targets set their own, so only view 0 needs updating here.
+	bgfx::setViewRect( 0, 0, 0, U16( width ), U16( height ) );
 }
 
 void

@@ -58,6 +58,13 @@ class Renderer
         // be called when a valid rendering context is active.
         virtual void Initialize();
 
+		// Tells the backend the drawing surface now has these dimensions in
+		// pixels. Backends handed a context someone else resizes -- GL, where
+		// the window owns it -- need nothing here, so the default does nothing.
+		// bgfx owns its swapchain and has to be told, or it keeps presenting at
+		// the old size.
+		virtual void SetSurfaceSize( U32 width, U32 height ) {}
+
 		// Perform any per-frame preparation. Total time is the time in seconds
 		// since the start of the application. Delta time is the amount of time
 		// in seconds it took to complete the previous frame.
@@ -282,6 +289,16 @@ class Renderer
     protected:
         // Destroys all queued GPU resources passed into the DestroyQueue() method.
         void DestroyQueuedGPUResources();
+
+        // Releases everything whose destruction still needs the graphics API to
+        // be alive: the geometry pools, the GPU resources CPUResources own, and
+        // whatever is already queued for deletion.
+        //
+        // ~Renderer does the same work, but a backend that owns the API's
+        // lifetime cannot rely on that: by the time ~Renderer runs, the derived
+        // destructor has already torn the API down. Such a backend calls this
+        // itself first, and ~Renderer then finds nothing left to do.
+        void DestroyGPUResources();
 
         // Derived classes must use this function to provide platform specific
         // and rendering API specific GPUResources.

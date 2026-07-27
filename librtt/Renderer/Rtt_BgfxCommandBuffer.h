@@ -12,6 +12,7 @@
 
 #include "Renderer/Rtt_CommandBuffer.h"
 #include "Renderer/Rtt_RendererCapabilities.h"
+#include "Renderer/Rtt_Texture.h"
 #include "Renderer/Rtt_Uniform.h"
 
 #include <bgfx/bgfx.h>
@@ -112,6 +113,7 @@ class BgfxCommandBuffer : public CommandBuffer
 		// consumed by Draw. bgfx has no persistent binding state: each submit()
 		// carries its own, and anything not set is dropped.
 		void ApplyState();
+		void ApplyTextures();
 		void SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType type, bool indexed );
 
 		BgfxRenderer& fRenderer;
@@ -132,6 +134,11 @@ class BgfxCommandBuffer : public CommandBuffer
 		// only when they change. Whatever is bound is therefore remembered here
 		// and re-applied for every draw; see SubmitDraw.
 		Uniform* fBoundUniforms[Uniform::kNumBuiltInVariables];
+
+		// Texture bindings are consumed at submit() the same way, and Corona
+		// rebinds a texture only when the fill changes, so they are remembered
+		// and re-applied alongside the uniforms above.
+		Texture* fBoundTextures[Texture::kNumUnits];
 
 		U64 fBlendState;
 		bool fBlendEnabled;

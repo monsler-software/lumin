@@ -145,6 +145,11 @@ BgfxCommandBuffer::BgfxCommandBuffer( Rtt_Allocator* allocator, BgfxRenderer& re
 		fBoundUniforms[i] = NULL;
 	}
 
+	for ( U32 i = 0; i < Texture::kNumUnits; ++i )
+	{
+		fBoundTextures[i] = NULL;
+	}
+
 	InitializeCachedParams();
 }
 
@@ -246,26 +251,48 @@ BgfxCommandBuffer::BindGeometry( Geometry* geometry )
 void
 BgfxCommandBuffer::BindTexture( Texture* texture, U32 unit )
 {
-	if ( !texture || !fProgram )
+	if ( unit >= Texture::kNumUnits )
 	{
 		return;
 	}
 
-	BgfxTexture* resource = static_cast< BgfxTexture* >( texture->GetGPUResource() );
+	// Not applied here, for the reason given at BindUniform: bgfx drops the
+	// binding at every submit(), and Corona rebinds a texture only when the
+	// fill changes, so a draw that reuses the previous fill would sample an
+	// unbound sampler. SubmitDraw re-applies whatever is remembered here.
+	fBoundTextures[unit] = texture;
+}
 
-	if ( !resource || !bgfx::isValid( resource->GetTexture() ) )
+// Re-sends every texture Corona has bound so far. The GPU resource is looked
+// up now rather than at bind time because it may not have existed yet then.
+void
+BgfxCommandBuffer::ApplyTextures()
+{
+	for ( U32 unit = 0; unit < Texture::kNumUnits; ++unit )
 	{
-		return;
-	}
+		Texture* texture = fBoundTextures[unit];
 
-	// The sampler uniform each unit corresponds to is declared by the shell
-	// (u_FillSampler0 and friends); the renderer caches those handles since
-	// they are shared by every program.
-	bgfx::UniformHandle sampler = fRenderer.GetSamplerUniform( unit );
+		if ( !texture )
+		{
+			continue;
+		}
 
-	if ( bgfx::isValid( sampler ) )
-	{
-		bgfx::setTexture( U8( unit ), sampler, resource->GetTexture(), BgfxTexture::SamplerFlags( *texture ) );
+		BgfxTexture* resource = static_cast< BgfxTexture* >( texture->GetGPUResource() );
+
+		if ( !resource || !bgfx::isValid( resource->GetTexture() ) )
+		{
+			continue;
+		}
+
+		// The sampler uniform each unit corresponds to is declared by the shell
+		// (u_FillSampler0 and friends); the renderer caches those handles since
+		// they are shared by every program.
+		bgfx::UniformHandle sampler = fRenderer.GetSamplerUniform( unit );
+
+		if ( bgfx::isValid( sampler ) )
+		{
+			bgfx::setTexture( U8( unit ), sampler, resource->GetTexture(), BgfxTexture::SamplerFlags( *texture ) );
+		}
 	}
 }
 
@@ -533,6 +560,8 @@ BgfxCommandBuffer::SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType ty
 				);
 		}
 	}
+
+	ApplyTextures();
 
 	bgfx::setState( state );
 	bgfx::submit( fCurrentView, program );

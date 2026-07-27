@@ -207,11 +207,16 @@ Renderer::Renderer( Rtt_Allocator* allocator )
 
 Renderer::~Renderer()
 {
+    // A backend that owns the graphics API's lifetime has already done this
+    // from its own destructor, since the API is gone by the time we run.
     Rtt_DELETE( fGeometryPool );
+    fGeometryPool = NULL;
+
     Rtt_DELETE( fInstancingGeometryPool );
+    fInstancingGeometryPool = NULL;
 
     DestroyQueuedGPUResources();
-    
+
     Rtt_DELETE( fBackCommandBuffer );
     Rtt_DELETE( fFrontCommandBuffer );
     
@@ -1050,6 +1055,20 @@ void
 Renderer::SetCPUResourceObserver(MCPUResourceObserver *resourceObserver)
 {
     fCPUResourceObserver = resourceObserver;
+}
+
+void
+Renderer::DestroyGPUResources()
+{
+    // The pools hold Geometry, whose destructor only queues its GPU resource,
+    // so they have to go before the queue is drained below.
+    Rtt_DELETE( fGeometryPool );
+    fGeometryPool = NULL;
+
+    Rtt_DELETE( fInstancingGeometryPool );
+    fInstancingGeometryPool = NULL;
+
+    ReleaseGPUResources();
 }
 
 void
