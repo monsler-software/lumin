@@ -197,8 +197,12 @@ BufferBitmap::UndoPremultipliedAlpha()
 			i < numPixels;
 			++i )
 	{
-		#ifdef Rtt_OPENGLES
-			//RGBA
+		// The bgfx backend reads a capture back as the bytes the texture holds,
+		// which for its kBGRA capture format is B,G,R,A -- alpha last, as under
+		// GLES. Desktop GL instead asks for BGRA as a packed 32-bit word, which
+		// little-endian machines store in the opposite order, hence ARGB.
+		#if defined( Rtt_OPENGLES ) || defined( Rtt_USE_BGFX )
+			//RGBA / BGRA: alpha last
 			U8 a = ((U8 *)p)[3];
 		#else
 			//ARGB
@@ -207,8 +211,9 @@ BufferBitmap::UndoPremultipliedAlpha()
 
 		if ( a > 0 )
 		{
-			#ifdef Rtt_OPENGLES
-				//RGBA
+			#if defined( Rtt_OPENGLES ) || defined( Rtt_USE_BGFX )
+				// Which of the three is which does not matter here: every one
+				// of them is divided by the same alpha.
 				U8& r = ((U8 *)p)[0];
 				U8& g = ((U8 *)p)[1];
 				U8& b = ((U8 *)p)[2];

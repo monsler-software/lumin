@@ -566,6 +566,28 @@ namespace Rtt
 			return;
 		}
 
+		// Backends that own their swapchain (bgfx) would otherwise keep
+		// presenting at the old size. This comes first, and unconditionally,
+		// because the size Corona is holding has usually been updated already by
+		// whatever resized the window -- the skin the simulator applies while a
+		// project loads, say -- so the equality test below would skip the resize
+		// and leave the swapchain at whatever the window happened to be when the
+		// renderer was created. SetSurfaceSize does nothing when the size really
+		// has not changed.
+		//
+		// What is passed is the window, not the content area: what arrives here
+		// is the window minus the simulator's menu bar, and presenting a buffer
+		// smaller than the surface leaves the compositor to stretch it, which is
+		// what made everything look soft. The menu bar is accounted for by the
+		// viewport instead -- Corona measures it from the bottom, so the content
+		// lands below the bar on its own.
+		int windowWidth = w;
+		int windowHeight = h;
+
+		SDL_GetWindowSize(fWindow, &windowWidth, &windowHeight);
+
+		fRuntime->GetDisplay().GetRenderer().SetSurfaceSize(windowWidth, windowHeight);
+
 		if (w == GetWidth() && h == GetHeight())
 		{
 			return;
@@ -575,10 +597,6 @@ namespace Rtt
 		// updated before anything asks the display for the new size.
 		SetWidth(w);
 		SetHeight(h);
-
-		// Backends that own their swapchain (bgfx) would otherwise keep
-		// presenting at the old size.
-		fRuntime->GetDisplay().GetRenderer().SetSurfaceSize(w, h);
 
 		// Recomputes the content scale and projection, then tells Lua about it.
 		RestartRenderer();

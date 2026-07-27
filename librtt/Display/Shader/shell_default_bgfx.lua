@@ -106,8 +106,33 @@ uniform mat4 u_ViewProjectionMatrix;
 	CORONA_GLOBAL vec4 CoronaInstanceData4;
 #endif
 
-#define CoronaVertexUserData a_texcoord1
-#define CoronaTexCoord a_texcoord0.xy
+// The vertex attributes, under the names kernels reach them by. Two sets of
+// names are in use: the Corona<Name> macros, and the a_* attribute names the
+// GL and Vulkan shells declare, which the built-in filters (wobble, pixelate,
+// scatter and the rest) still write directly.
+//
+// Both point at globals rather than at the attributes themselves, for the same
+// reason the varyings do: on the HLSL, SPIR-V and Metal paths bgfx passes
+// attributes as parameters of main(), which puts them out of scope inside a
+// kernel. main() copies them across before calling VertexKernel.
+// A vertex kernel is allowed to override the texture coordinate the fragment
+// stage will see -- filter.straighten does exactly that -- by assigning to
+// v_TexCoord, which the GL shell declares as a varying. Here it is a global
+// that main() seeds before the kernel runs and hands to the $output after.
+CORONA_GLOBAL vec2 v_TexCoord;
+
+CORONA_GLOBAL vec2 CoronaAttribPosition;
+CORONA_GLOBAL vec3 CoronaAttribTexCoord;
+CORONA_GLOBAL vec4 CoronaAttribColor;
+CORONA_GLOBAL vec4 CoronaAttribUserData;
+
+#define a_Position CoronaAttribPosition
+#define a_TexCoord CoronaAttribTexCoord
+#define a_Color CoronaAttribColor
+#define a_UserData CoronaAttribUserData
+
+#define CoronaVertexUserData CoronaAttribUserData
+#define CoronaTexCoord CoronaAttribTexCoord.xy
 
 // Single-float built-ins travel in the x component, since bgfx has no scalar
 // uniform type.
@@ -120,7 +145,13 @@ P_POSITION vec2 VertexKernel( P_POSITION vec2 position );
 
 void main()
 {
-	v_TexCoordIn = a_texcoord0.xy;
+	CoronaAttribPosition = a_position.xy;
+	CoronaAttribTexCoord = a_texcoord0;
+	CoronaAttribColor = a_color0;
+	CoronaAttribUserData = a_texcoord1;
+
+	v_TexCoord = a_texcoord0.xy;
+
 	v_ColorScaleIn = a_color0;
 	v_UserDataIn = a_texcoord1;
 
@@ -144,7 +175,10 @@ void main()
 		CoronaInstanceData4 = i_data4;
 	#endif
 
-	P_POSITION vec2 position = VertexKernel( a_position.xy );
+	P_POSITION vec2 position = VertexKernel( CoronaAttribPosition );
+
+	// After the kernel, since it may have overridden it.
+	v_TexCoordIn = v_TexCoord;
 
 	v_PositionIn = position;
 

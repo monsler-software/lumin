@@ -1047,6 +1047,18 @@ Display::Capture( DisplayObject *object,
                 optional_output_color->b = bytes[ 2 ];
                 optional_output_color->a = bytes[ 3 ];
 
+#            elif defined( Rtt_USE_BGFX )
+
+                // The capture texture above is kBGRA, and that is literally how
+                // the bgfx readback lays the bytes out. The GL path below reads
+                // them as ARGB instead because desktop GL is asked for BGRA as
+                // a packed 32-bit word, which little-endian machines then store
+                // in the opposite order.
+                optional_output_color->b = bytes[ 0 ];
+                optional_output_color->g = bytes[ 1 ];
+                optional_output_color->r = bytes[ 2 ];
+                optional_output_color->a = bytes[ 3 ];
+
 #            else // Not Rtt_OPENGLES
 
                 // IMPORTANT: We're assuming the format is GL_ARGB and GL_UNSIGNED_BYTE.

@@ -68,6 +68,10 @@ class BgfxRenderer : public Renderer
 		bgfx::ViewId AcquireViewId();
 		void ResetViewIds();
 
+		// The window's height in pixels, which the window's view rect is
+		// measured against.
+		U32 GetSurfaceHeight() const { return fParams.fHeight; }
+
 	protected:
 		virtual GPUResource* Create( const CPUResource* resource );
 

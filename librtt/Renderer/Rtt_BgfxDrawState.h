@@ -49,6 +49,15 @@ struct BgfxDrawState
 	// View 0 is the window; render-to-texture takes the ids above it.
 	bgfx::ViewId fCurrentView;
 
+	// Corona treats the viewport and the scissor as context state, set once and
+	// left alone; in bgfx they belong to a view, and a view is switched every
+	// time a render target is bound. So they are remembered here and re-applied
+	// on every switch -- Corona restores them *before* it binds the previous
+	// framebuffer back (see Shader::Draw), which without this would leave them
+	// on the view being left behind and the one arrived at with none at all.
+	S32 fViewport[4];
+	S32 fScissor[4];
+
 	BgfxGeometry* fGeometry;
 
 	// Geometry Corona refills every frame owns no bgfx buffers, so the vertex

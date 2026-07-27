@@ -247,6 +247,39 @@ namespace Rtt
 
 	bool SolarApp::PollEvents()
 	{
+		// TEMPORARY debug hook: synthesize clicks at LUMIN_TESTCLICK="x,y;x,y;..."
+		if (const char* spec = getenv("LUMIN_TESTCLICK"))
+		{
+			static int sFrames = 0;
+			++sFrames;
+
+			int index = 0;
+			const char* p = spec;
+			while (p && *p)
+			{
+				int cx = 0, cy = 0;
+				if (sscanf(p, "%d,%d", &cx, &cy) == 2)
+				{
+					const int downAt = 120 + index * 90;
+					if (sFrames == downAt || sFrames == downAt + 6)
+					{
+						SDL_Event e; SDL_zero(e);
+						e.type = (sFrames == downAt) ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+						e.button.windowID = SDL_GetWindowID(fWindow);
+						e.button.button = SDL_BUTTON_LEFT;
+						e.button.state = (sFrames == downAt) ? SDL_PRESSED : SDL_RELEASED;
+						e.button.clicks = 1;
+						e.button.x = cx; e.button.y = cy;
+						fprintf(stderr, "TESTCLICK #%d %s at %d,%d\n", index, (sFrames == downAt) ? "down" : "up", cx, cy);
+						SDL_PushEvent(&e);
+					}
+				}
+				++index;
+				p = strchr(p, ';');
+				if (p) ++p;
+			}
+		}
+
 		vector<SDL_Event> events;
 		SDL_Event evt;
 		while (SDL_PollEvent(&evt))

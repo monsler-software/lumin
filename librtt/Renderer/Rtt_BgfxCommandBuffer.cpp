@@ -24,6 +24,9 @@
 #include "Core/Rtt_Assert.h"
 #include "Core/Rtt_String.h"
 
+#include <cstdio>
+#include <cstdlib>
+
 // ----------------------------------------------------------------------------
 
 namespace Rtt
@@ -223,6 +226,9 @@ BgfxCommandBuffer::BindFrameBufferObject( FrameBufferObject* fbo, bool asDrawBuf
 	if ( !fbo )
 	{
 		fState.fCurrentView = 0; // back to the window
+
+		ApplyViewRects();
+
 		return;
 	}
 
@@ -255,6 +261,18 @@ BgfxCommandBuffer::BindFrameBufferObject( FrameBufferObject* fbo, bool asDrawBuf
 	resource->SetViewId( fState.fCurrentView );
 
 	bgfx::setViewFrameBuffer( fState.fCurrentView, resource->GetFrameBuffer() );
+
+	// View state outlives the frame that set it, and the ids are handed out
+	// again from the start every frame, so this id may still be carrying the
+	// clear some other target asked for last frame. Left alone, that clear
+	// would wipe what earlier views already drew into this framebuffer -- the
+	// scene rendered before an effect's first offscreen pass, say. Corona
+	// issues its own Clear where it wants one.
+	bgfx::setViewClear( fState.fCurrentView, BGFX_CLEAR_NONE );
+
+	// A view carries its own rects, and this one has just been handed out, so
+	// whatever Corona set before the switch has to be put onto it.
+	ApplyViewRects();
 }
 
 // Copies a region of what has been rendered into a texture, which is how
@@ -381,6 +399,19 @@ BgfxCommandBuffer::ApplyTextures()
 			bgfx::setTexture( U8( unit ), sampler, resource->GetTexture(), BgfxTexture::SamplerFlags( *texture ) );
 		}
 	}
+}
+
+bool
+BgfxCommandBuffer::FlipsOffscreenY() const
+{
+	if ( 0 == fState.fCurrentView )
+	{
+		return false; // the window, which bgfx presents the right way up itself
+	}
+
+	const bgfx::Caps* caps = bgfx::getCaps();
+
+	return caps && !caps->originBottomLeft;
 }
 
 void
@@ -602,10 +633,71 @@ BgfxCommandBuffer::SetBlendEquation( RenderTypes::BlendEquation equation )
 		| BGFX_STATE_BLEND_EQUATION_SEPARATE( equationState, equationState );
 }
 
+// Where a rect Corona measured from the bottom of the target sits in bgfx's
+// own coordinates, which run from the top.
+//
+// Only the window needs the conversion. What is rendered into a texture is
+// deliberately drawn upside down there (see FlipsOffscreenY), so a rect
+// measured from the bottom of the image already counts from the top of the
+// target it is stored in.
+U16
+BgfxCommandBuffer::ViewRectTop( int y, int height ) const
+{
+	if ( 0 != fState.fCurrentView )
+	{
+		return U16( y );
+	}
+
+	// The window's surface, which is what the swapchain covers -- larger than
+	// the area Corona draws into when the simulator puts a menu bar above it.
+	// Measuring from the bottom is what leaves that bar its room.
+	const int top = int( fRenderer.GetSurfaceHeight() ) - ( y + height );
+
+	return U16( top > 0 ? top : 0 );
+}
+
+// Puts the viewport and scissor Corona last asked for onto whatever view is
+// current now. See the note on BgfxDrawState::fViewport.
+void
+BgfxCommandBuffer::ApplyViewRects()
+{
+	if ( fState.fViewport[2] > 0 && fState.fViewport[3] > 0 )
+	{
+		if ( getenv("LUMIN_VIEWLOG") && 0 == fState.fCurrentView ) fprintf(stderr, "VIEW0 corona=(%d,%d,%d,%d) -> bgfx y=%d surfaceH=%u\n", fState.fViewport[0],fState.fViewport[1],fState.fViewport[2],fState.fViewport[3], (int)ViewRectTop(fState.fViewport[1], fState.fViewport[3]), fRenderer.GetSurfaceHeight());
+		bgfx::setViewRect(
+			  fState.fCurrentView
+			, U16( fState.fViewport[0] )
+			, ViewRectTop( fState.fViewport[1], fState.fViewport[3] )
+			, U16( fState.fViewport[2] )
+			, U16( fState.fViewport[3] )
+			);
+	}
+
+	if ( fState.fScissorEnabled && fState.fScissor[2] > 0 && fState.fScissor[3] > 0 )
+	{
+		bgfx::setViewScissor(
+			  fState.fCurrentView
+			, U16( fState.fScissor[0] )
+			, ViewRectTop( fState.fScissor[1], fState.fScissor[3] )
+			, U16( fState.fScissor[2] )
+			, U16( fState.fScissor[3] )
+			);
+	}
+	else
+	{
+		bgfx::setViewScissor( fState.fCurrentView ); // no arguments clears it
+	}
+}
+
 void
 BgfxCommandBuffer::SetViewport( int x, int y, int width, int height )
 {
-	bgfx::setViewRect( fState.fCurrentView, U16( x ), U16( y ), U16( width ), U16( height ) );
+	fState.fViewport[0] = x;
+	fState.fViewport[1] = y;
+	fState.fViewport[2] = width;
+	fState.fViewport[3] = height;
+
+	ApplyViewRects();
 }
 
 void
@@ -613,19 +705,18 @@ BgfxCommandBuffer::SetScissorEnabled( bool enabled )
 {
 	fState.fScissorEnabled = enabled;
 
-	if ( !enabled )
-	{
-		bgfx::setViewScissor( fState.fCurrentView ); // no arguments clears it
-	}
+	ApplyViewRects();
 }
 
 void
 BgfxCommandBuffer::SetScissorRegion( int x, int y, int width, int height )
 {
-	if ( fState.fScissorEnabled )
-	{
-		bgfx::setViewScissor( fState.fCurrentView, U16( x ), U16( y ), U16( width ), U16( height ) );
-	}
+	fState.fScissor[0] = x;
+	fState.fScissor[1] = y;
+	fState.fScissor[2] = width;
+	fState.fScissor[3] = height;
+
+	ApplyViewRects();
 }
 
 void
@@ -856,14 +947,42 @@ BgfxCommandBuffer::SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType ty
 
 		bgfx::UniformHandle handle = fRenderer.GetBuiltInUniform( i );
 
-		if ( bgfx::isValid( handle ) )
+		if ( !bgfx::isValid( handle ) )
 		{
-			bgfx::setUniform(
-				  handle
-				, uniform->GetData()
-				, BgfxRenderer::GetBuiltInUniformElementCount( i, uniform->GetSizeInBytes() )
-				);
+			continue;
 		}
+
+		// What Corona hands over is built for OpenGL, whose framebuffers start
+		// at the bottom left. Everywhere else a render target starts at the top
+		// left, so the image lands in the texture upside down -- visible the
+		// moment that texture is sampled again, which is what a snapshot, a
+		// canvas or display.captureScreen does. Flipping clip-space Y for
+		// offscreen views puts the rows back in the order the rest of Corona
+		// (sampling and readback alike) expects. The window itself is left
+		// alone: bgfx already presents view 0 the right way up.
+		if ( Uniform::kViewProjectionMatrix == i && FlipsOffscreenY() )
+		{
+			float matrix[16];
+
+			memcpy( matrix, uniform->GetData(), sizeof( matrix ) );
+
+			// Column-major, so the row that produces clip-space Y is every
+			// second element.
+			for ( U32 element = 1; element < 16; element += 4 )
+			{
+				matrix[element] = -matrix[element];
+			}
+
+			bgfx::setUniform( handle, matrix, 1 );
+
+			continue;
+		}
+
+		bgfx::setUniform(
+			  handle
+			, uniform->GetData()
+			, BgfxRenderer::GetBuiltInUniformElementCount( i, uniform->GetSizeInBytes() )
+			);
 	}
 
 	ApplyTextures();

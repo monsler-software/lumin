@@ -118,6 +118,17 @@ class BgfxCommandBuffer : public CommandBuffer
 		void ApplyTextures();
 		void SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType type, bool indexed );
 
+		// Re-applies the viewport and scissor to the current view, which is what
+		// makes them survive a render target switch; see BgfxDrawState.
+		void ApplyViewRects();
+		U16 ViewRectTop( int y, int height ) const;
+
+		// Whether what is being drawn now has to have its clip-space Y flipped:
+		// true when rendering into a texture on a backend whose framebuffers
+		// start at the top left, which is every one of them but OpenGL. See
+		// where the view-projection matrix is applied.
+		bool FlipsOffscreenY() const;
+
 		// Fills a transient index buffer that draws a fan of vertexCount
 		// vertices as triangles, and binds it. False if the fan cannot be
 		// drawn, in which case nothing was bound.

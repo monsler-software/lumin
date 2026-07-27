@@ -324,6 +324,20 @@ BgfxRenderer::GetNamedUniform( const char* name, U32 sizeInBytes )
 bgfx::ViewId
 BgfxRenderer::AcquireViewId()
 {
+	const bgfx::Caps* caps = bgfx::getCaps();
+	const U32 limit = caps ? caps->limits.maxViews : 256;
+
+	// Every render target bound in a frame takes an id of its own, and a scene
+	// with enough filters and snapshots can ask for more than bgfx has. Reusing
+	// the last one draws into the right target with the wrong ordering, which
+	// is a good deal better than handing bgfx an id it will reject.
+	if ( U32( fNextViewId ) + 1 >= limit )
+	{
+		Rtt_TRACE( ( "WARNING: this frame needs more than the %u render passes bgfx allows; some may draw out of order\n", limit ) );
+
+		return bgfx::ViewId( limit - 1 );
+	}
+
 	return fNextViewId++;
 }
 
@@ -478,36 +492,26 @@ BgfxRenderer::CaptureFrameBuffer( RenderingStream & stream, BufferBitmap & bitma
 	}
 
 	const U32 bytesPerPixel = U32( PlatformBitmap::BytesPerPixel( bitmap.GetFormat() ) );
-	const U32 bitmapBytes = U32( bitmap.Width() * bitmap.Height() ) * bytesPerPixel;
 
-	const bgfx::Caps* caps = bgfx::getCaps();
+	// Corona expects what glReadPixels gives it: rows from the bottom up. The
+	// texture already holds them that way on every backend, because anything
+	// drawn into one has its clip-space Y flipped where the framebuffer origin
+	// is not at the bottom left (see BgfxCommandBuffer::FlipsOffscreenY), so
+	// the rows only have to be copied across -- row by row, since the readback
+	// texture and the bitmap need not be the same width.
+	const U32 rowBytes = Min( U32( bitmap.Width() ), U32( fReadBackWidth ) ) * bytesPerPixel;
+	const U32 rows = Min( U32( bitmap.Height() ), U32( fReadBackHeight ) );
 
-	// Corona expects what glReadPixels gives it: rows from the bottom up, since
-	// that is the convention its offscreen projection is built for. bgfx hands
-	// back the texture in its own memory order, which is bottom-up only on the
-	// backends whose textures start at the bottom left -- OpenGL. Everywhere
-	// else the rows arrive top-down and have to be turned over, or the capture
-	// comes out upside down.
-	if ( caps && !caps->originBottomLeft )
+	U8* dst = static_cast< U8* >( destination );
+
+	for ( U32 row = 0; row < rows; ++row )
 	{
-		const U32 rowBytes = Min( U32( bitmap.Width() ) * bytesPerPixel, U32( fReadBackWidth ) * bytesPerPixel );
-		const U32 rows = Min( U32( bitmap.Height() ), U32( fReadBackHeight ) );
-
-		U8* dst = static_cast< U8* >( destination );
-
-		for ( U32 row = 0; row < rows; ++row )
-		{
-			memcpy(
-				  dst + ( rows - 1 - row ) * U32( bitmap.Width() ) * bytesPerPixel
-				, fReadBackBuffer + row * U32( fReadBackWidth ) * bytesPerPixel
-				, rowBytes
-				);
-		}
-
-		return;
+		memcpy(
+			  dst + row * U32( bitmap.Width() ) * bytesPerPixel
+			, fReadBackBuffer + row * U32( fReadBackWidth ) * bytesPerPixel
+			, rowBytes
+			);
 	}
-
-	memcpy( destination, fReadBackBuffer, Min( fReadBackBufferSize, bitmapBytes ) );
 }
 
 GPUResource*

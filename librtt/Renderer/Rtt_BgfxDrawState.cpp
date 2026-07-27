@@ -39,6 +39,12 @@ BgfxDrawState::Reset()
 	fBlendEnabled = false;
 	fScissorEnabled = false;
 
+	for ( U32 i = 0; i < 4; ++i )
+	{
+		fViewport[i] = 0;
+		fScissor[i] = 0;
+	}
+
 	for ( U32 i = 0; i < Uniform::kNumBuiltInVariables; ++i )
 	{
 		fBoundUniforms[i] = NULL;

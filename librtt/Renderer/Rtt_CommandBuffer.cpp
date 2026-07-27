@@ -63,6 +63,17 @@ RendererCapabilities::KeyFromGlString( const char *s )
 
 RendererCapabilities::~RendererCapabilities()
 {
+	// Whoever installed this is going away, so the fallback has to take over
+	// again. Leaving the pointer behind is not a slow leak but an immediate
+	// crash: the next system.getInfo() call would dispatch a virtual through a
+	// destroyed object, which lands in __cxa_pure_virtual. The simulator gets
+	// there every time a project is opened -- the runtime it came from is torn
+	// down first, and the new one's init.lua asks for the renderer string
+	// before its own backend has installed anything.
+	if ( sCurrent == this )
+	{
+		sCurrent = NULL;
+	}
 }
 
 // Used until a backend installs its own. The limits are the minimums an ES2
