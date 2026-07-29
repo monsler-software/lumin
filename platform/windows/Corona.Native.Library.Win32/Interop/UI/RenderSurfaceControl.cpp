@@ -29,7 +29,11 @@ RenderSurfaceControl::RenderSurfaceControl(HWND windowHandle, const Params & par
 	fRenderFrameEventHandlerPointer(nullptr),
 	fMainDeviceContextHandle(nullptr),
 	fRenderingContextHandle(nullptr),
-	fVulkanContext(nullptr)
+	fVulkanContext(nullptr),
+	fOverlayHeight(0),
+	fMessageFilterProc(nullptr),
+	fMessageFilterUserdata(nullptr),
+	fIsUsingBgfx(false)
 {
 	// Add event handlers.
 	GetReceivedMessageEventHandlers().Add(&fReceivedMessageEventHandler);
@@ -53,7 +57,19 @@ RenderSurfaceControl::~RenderSurfaceControl()
 #pragma region Public Methods
 bool RenderSurfaceControl::CanRender() const
 {
-	return (fRenderingContextHandle != nullptr);
+	return (fRenderingContextHandle != nullptr) || fIsUsingBgfx;
+}
+
+void * RenderSurfaceControl::GetBackendContext() const
+{
+	if (fIsUsingBgfx)
+	{
+		// Handed to Runtime::SetBackend, which passes it on to the renderer unread; the cast away from const
+		// is because that path takes a void*, and the renderer copies what it is given.
+		return (void *)&fBgfxSurfaceParams;
+	}
+
+	return IsUsingVulkanBackend() ? fVulkanContext : nullptr;
 }
 
 RenderSurfaceControl::Version RenderSurfaceControl::GetRendererVersion() const
@@ -66,9 +82,27 @@ void RenderSurfaceControl::SetRenderFrameHandler(RenderSurfaceControl::RenderFra
 	fRenderFrameEventHandlerPointer = handlerPointer;
 }
 
+void RenderSurfaceControl::SetMessageFilter(RenderSurfaceControl::MessageFilterProc proc, void *userdata)
+{
+	fMessageFilterProc = proc;
+	fMessageFilterUserdata = userdata;
+}
+
+void RenderSurfaceControl::SetOverlayHeight(int height)
+{
+	fOverlayHeight = (height > 0) ? height : 0;
+}
+
+int RenderSurfaceControl::GetOverlayHeight() const
+{
+	return fOverlayHeight;
+}
+
 void RenderSurfaceControl::SelectRenderingContext()
 {
-	if (fVulkanContext)
+	// Neither of these has a context of the kind wglMakeCurrent means: Vulkan has its own, and bgfx keeps
+	// whatever it made to itself.
+	if (fVulkanContext || fIsUsingBgfx)
 	{
 		return;
 	}
@@ -117,7 +151,8 @@ void RenderSurfaceControl::SelectRenderingContext()
 
 void RenderSurfaceControl::SwapBuffers()
 {
-	if (fVulkanContext)
+	// Both present for themselves, at the end of their own frame -- bgfx in bgfx::frame().
+	if (fVulkanContext || fIsUsingBgfx)
 	{
 		return;
 	}
@@ -166,6 +201,29 @@ void RenderSurfaceControl::CreateContext(const Params & params)
 
 	// Destroy the last OpenGL context that was created.
 	DestroyContext();
+
+	if (params.IsBgfxWanted())
+	{
+		// bgfx makes its own context, out of the window, when the renderer is created -- so there is nothing
+		// to create here and nothing that can fail. All this does is describe the window; if the renderer
+		// cannot bring bgfx up on it, that is reported where the renderer is made.
+		RECT clientBounds{};
+		::GetClientRect(windowHandle, &clientBounds);
+
+		fBgfxSurfaceParams.fNativeWindowHandle = windowHandle;
+		fBgfxSurfaceParams.fNativeDisplayType = nullptr;
+		fBgfxSurfaceParams.fWidth = (Rtt::U32)(clientBounds.right - clientBounds.left);
+		fBgfxSurfaceParams.fHeight = (Rtt::U32)(clientBounds.bottom - clientBounds.top);
+		fBgfxSurfaceParams.fIsWayland = false;
+
+		fIsUsingBgfx = true;
+
+		fRendererVersion.SetString("bgfx");
+		fRendererVersion.SetMajorNumber(0);
+		fRendererVersion.SetMinorNumber(0);
+
+		return;
+	}
 
 	if (params.IsVulkanWanted())
 	{
@@ -305,6 +363,11 @@ void RenderSurfaceControl::DestroyContext()
 	}
 
 	fVulkanContext = nullptr;
+
+	// Nothing of bgfx's is owned here -- the renderer holds it, and lets go of it when it is destroyed --
+	// so this is only the surface forgetting that it described one.
+	fIsUsingBgfx = false;
+	fBgfxSurfaceParams = Rtt::BgfxSurfaceParams();
 
 	if (fMainDeviceContextHandle)
 	{
@@ -475,6 +538,21 @@ RenderSurfaceControl::FetchMultisampleFormatResult RenderSurfaceControl::FetchMu
 
 void RenderSurfaceControl::OnReceivedMessage(UIComponent& sender, HandleMessageEventArgs& arguments)
 {
+	// Whatever the host draws over the surface gets first refusal. This is the only handler that can offer
+	// it: the runtime's input manager attaches to the same event, and it attaches later, which under an
+	// event that invokes its handlers in the order they were added means anything added by the host would
+	// see the message only after Corona had already dispatched a touch for it.
+	if (fMessageFilterProc)
+	{
+		if (fMessageFilterProc(
+				fMessageFilterUserdata, arguments.GetMessageId(), arguments.GetWParam(), arguments.GetLParam()))
+		{
+			arguments.SetReturnResult(0);
+			arguments.SetHandled();
+			return;
+		}
+	}
+
 	switch (arguments.GetMessageId())
 	{
 		case WM_ERASEBKGND:
@@ -513,15 +591,13 @@ void RenderSurfaceControl::OnPaint()
 	}
 
 	// Render to the control.
-	bool canDraw = (fMainDeviceContextHandle && fRenderingContextHandle) || fVulkanContext;
+	bool canDraw = (fMainDeviceContextHandle && fRenderingContextHandle) || fVulkanContext || fIsUsingBgfx;
 
 	if (canDraw)
 	{
-		// Select this control's OpenGL context.
-		if (!fVulkanContext)
-		{
-			SelectRenderingContext();
-		}
+		// Select this control's OpenGL context. SelectRenderingContext() knows the other backends have
+		// nothing to select, but the black-screen fallback below is GL and must not run under them.
+		SelectRenderingContext();
 
 		// If the owner of this surface has provided a RenderFrameHandler, then use it to draw the next frame.
 		// Otherwise, draw a black screen until a handler has been given to this surface.
@@ -536,7 +612,7 @@ void RenderSurfaceControl::OnPaint()
 			}
 			catch (std::exception ex) { }
 		}
-		if (false == didDraw)
+		if ((false == didDraw) && !fVulkanContext && !fIsUsingBgfx)
 		{
 			::glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 			::glClear(GL_COLOR_BUFFER_BIT);
@@ -620,7 +696,9 @@ int RenderSurfaceControl::Version::CompareTo(const RenderSurfaceControl::Version
 
 RenderSurfaceControl::Params::Params()
 :	fWantVulkan( false ),
-	fRequireVulkan( false )
+	fRequireVulkan( false ),
+	fWantBgfx( false ),
+	fRequireBgfx( false )
 {
 }
 
@@ -638,6 +716,22 @@ bool RenderSurfaceControl::Params::IsVulkanWanted() const
 bool RenderSurfaceControl::Params::IsVulkanRequired() const
 {
 	return fRequireVulkan;
+}
+
+void RenderSurfaceControl::Params::SetBgfxWanted(bool required)
+{
+	fWantBgfx = true;
+	fRequireBgfx = required;
+}
+
+bool RenderSurfaceControl::Params::IsBgfxWanted() const
+{
+	return fWantBgfx;
+}
+
+bool RenderSurfaceControl::Params::IsBgfxRequired() const
+{
+	return fRequireBgfx;
 }
 
 #pragma endregion

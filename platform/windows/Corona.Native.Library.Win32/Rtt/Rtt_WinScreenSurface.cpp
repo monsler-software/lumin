@@ -130,6 +130,11 @@ S32 WinScreenSurface::Height() const
 		fPreviousClientHeight = length;
 	}
 
+	// Whatever the host draws over the top of the surface -- the simulator's menu bar -- is not Corona's to
+	// render into. The surface keeps its size; only what Corona is told about it shrinks, which is what puts
+	// the content below the bar instead of underneath it.
+	length -= renderSurfacePointer->GetOverlayHeight();
+
 	// Corona's rendering system will assert if given a zero length. So, floor it to 1.
 	if (length <= 0)
 	{

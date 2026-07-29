@@ -271,6 +271,23 @@ MacSimulator::Initialize(
 	fViewCallback = new MacViewCallback( screenView ); // This is what is on the Timer loop
 	Super::Initialize( platform, fViewCallback ); // Inside here, Runtime is instantiated
 
+#if defined( Rtt_USE_BGFX )
+	// bgfx creates the graphics context itself, so it needs the view rather than a context this host made --
+	// which is why GLView is a plain NSView here. Set before the project is loaded, since that is when the
+	// display, and with it the renderer, is built.
+	{
+		NSSize viewSize = [screenView bounds].size;
+
+		fBgfxSurfaceParams.fNativeWindowHandle = (void*)screenView;
+		fBgfxSurfaceParams.fNativeDisplayType = NULL;
+		fBgfxSurfaceParams.fWidth = (U32)viewSize.width;
+		fBgfxSurfaceParams.fHeight = (U32)viewSize.height;
+		fBgfxSurfaceParams.fIsWayland = false;
+
+		GetPlayer()->GetRuntime().SetBackend( "bgfxBackend", &fBgfxSurfaceParams );
+	}
+#endif
+
 	// TODO: Set kDeferUpdate and kRenderSeparately properties here
 
 	//Mac simulator needs to defer the initial update and render in separate pass

@@ -497,7 +497,7 @@ namespace Rtt
 
 		std::vector<Menu> menus;
 
-		BuildSimulatorMenus(IsHomeScreen(fContext->GetAppName()), menus);
+		BuildSimulatorMenus(IsHomeScreen(fContext->GetAppName()), IsSuspended(), menus);
 
 		fMenuBar.SetMenus(menus);
 	}

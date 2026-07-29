@@ -45,6 +45,8 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!-- The bgfx backend and the libraries it links; a no-op unless LuminBgfx is true. -->
+  <Import Project="..\Bgfx.Definitions.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -350,6 +352,15 @@
     <Image Include="res\exampleSpotlight.ico" />
     <Image Include="res\exampleTwitter.ico" />
     <Image Include="res\Simulator.ico" />
+  </ItemGroup>
+  <!--
+    SimulatorView.cpp reaches into the bgfx renderer to hang the menu bar off it, so it includes bgfx's
+    headers and needs the C++20 they require. Only when there is a bgfx to include.
+  -->
+  <ItemGroup Condition="'$(LuminBgfx)'=='true'">
+    <ClCompile Include="SimulatorView.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

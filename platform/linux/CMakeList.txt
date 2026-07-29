@@ -889,6 +889,7 @@ add_executable( Solar2D
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxSimulator.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxDialog.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxMenuBar.cpp
+	${CORONA_ROOT}/librtt/UI/Rtt_SimulatorMenus.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxDialogBuild.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxContext.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxAudioRecorder.cpp
@@ -927,6 +928,7 @@ add_executable( Solar2DSimulator
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxSimulator.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxDialog.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxMenuBar.cpp
+	${CORONA_ROOT}/librtt/UI/Rtt_SimulatorMenus.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxDialogBuild.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxContext.cpp
 	${CORONA_ROOT}/platform/linux/src/Rtt_LinuxAudioRecorder.cpp
@@ -1040,7 +1042,7 @@ target_link_libraries(Solar2D	dl GL z pthread openal freetype png jpeg crypto cu
 target_link_libraries(Solar2DSimulator	dl GL z pthread openal freetype png jpeg crypto curl SDL2 ${LIBCEF})
 
 # Optional bgfx backend; a no-op unless -DLUMIN_BGFX=ON.
-include(${CORONA_ROOT}/platform/linux/bgfx.cmake)
+include(${CORONA_ROOT}/cmake/bgfx.cmake)
 if(LUMIN_BGFX)
 	lumin_target_enable_bgfx(Solar2D)
 	lumin_target_enable_bgfx(Solar2DSimulator)

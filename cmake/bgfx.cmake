@@ -5,6 +5,14 @@
 #
 #   cmake .. -DLUMIN_BGFX=ON
 #
+# This describes bgfx for every platform, not just the one whose build system
+# happens to be CMake. Windows builds with MSBuild and macOS with Xcode, and
+# neither can be told how to build bgfx without repeating all of the below --
+# the submodule layout, the renamed shaderc namespace, the C++20 requirement --
+# in a second and a third dialect, where it would drift. Instead those hosts
+# build the libraries here, through cmake/lumin-bgfx, and link the result;
+# see that directory's CMakeLists.txt.
+#
 # Two things get built:
 #
 #   bgfx        - the renderer itself, from the external/bgfx submodule.
@@ -23,6 +31,16 @@ if(NOT LUMIN_BGFX)
 endif()
 
 set(BGFX_ROOT "${CORONA_ROOT}/external/bgfx")
+
+# The engine builds as C++17; bx, shaderc and anything that includes a bgfx
+# header need C++20. Raised per file rather than per project, so the flag stays
+# off every other translation unit -- which means naming it, since the two
+# compiler families spell it differently.
+if(MSVC)
+	set(LUMIN_CXX20_FLAG "/std:c++20")
+else()
+	set(LUMIN_CXX20_FLAG "-std=c++20")
+endif()
 
 if(NOT EXISTS "${BGFX_ROOT}/bgfx/src/bgfx.cpp")
 	message(FATAL_ERROR
@@ -48,6 +66,15 @@ set(BGFX_BUILD_TOOLS_GEOMETRY OFF CACHE BOOL "" FORCE)
 set(BGFX_BUILD_TOOLS_TEXTURE OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("${BGFX_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/bgfx" EXCLUDE_FROM_ALL)
+
+# bgfx fixes its handle pools at compile time, and its default of 128
+# framebuffers is well under what Corona content asks for: every snapshot,
+# canvas and filtered container holds one for as long as it exists, and a scene
+# with a few hundred of them is ordinary. Past the limit bgfx refuses to create
+# the framebuffer and the target simply does not draw -- there is no runtime way
+# to raise it, and the backend this replaces had no such ceiling. The pools are
+# arrays of small records, so the cost of the larger figure is a few hundred KB.
+target_compile_definitions(bgfx PRIVATE BGFX_CONFIG_MAX_FRAME_BUFFERS=1024)
 
 # ----------------------------------------------------------------------------
 # shaderc as a library
@@ -83,9 +110,9 @@ target_compile_definitions(shaderc-lib PRIVATE
 	__STDC_LIMIT_MACROS
 )
 
-# The engine builds as C++17; bx and shaderc need C++20. The engine's flags
-# reach here through CMAKE_CXX_FLAGS, so override rather than rely on defaults.
-target_compile_options(shaderc-lib PRIVATE -std=c++20)
+# The engine's flags reach here through CMAKE_CXX_FLAGS, so override rather
+# than rely on defaults.
+target_compile_options(shaderc-lib PRIVATE ${LUMIN_CXX20_FLAG})
 
 target_include_directories(shaderc-lib PRIVATE
 	"${BGFX_ROOT}/bgfx/include"
@@ -160,12 +187,11 @@ set(LUMIN_BGFX_SOURCES
 function(lumin_target_enable_bgfx TARGET_NAME)
 	target_sources(${TARGET_NAME} PRIVATE ${LUMIN_BGFX_SOURCES})
 
-	# bx's headers require C++20, while the engine builds as C++17. Raising it
-	# for these files alone keeps the change off every other translation unit.
+	# See LUMIN_CXX20_FLAG above.
 	set_source_files_properties(
 		${LUMIN_BGFX_SOURCES}
 		TARGET_DIRECTORY ${TARGET_NAME}
-		PROPERTIES COMPILE_OPTIONS "-std=c++20"
+		PROPERTIES COMPILE_OPTIONS "${LUMIN_CXX20_FLAG}"
 	)
 
 	target_compile_definitions(${TARGET_NAME} PUBLIC

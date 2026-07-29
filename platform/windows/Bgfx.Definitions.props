@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The bgfx rendering backend, off by default.
+
+  bgfx itself is not built here. It, bx, bimg and everything shaderc needs are
+  described once, in CMake, and MSBuild would only be repeating that in a second
+  dialect - see cmake/bgfx.cmake for why. Build the libraries first:
+
+      cmake -S cmake\lumin-bgfx -B build-bgfx-libs -G "Visual Studio 17 2022" -A Win32
+      cmake --build build-bgfx-libs --config Release
+
+  then build the simulator with the backend turned on:
+
+      msbuild Corona.Simulator.sln /p:LuminBgfx=true
+
+  LuminBgfxLibDir says where the libraries landed; override it if the build
+  directory above was named something else.
+-->
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <LuminBgfx Condition="'$(LuminBgfx)'==''">false</LuminBgfx>
+    <LuminBgfxRoot Condition="'$(LuminBgfxRoot)'==''">$(MSBuildThisFileDirectory)..\..\external\bgfx\</LuminBgfxRoot>
+    <LuminBgfxLibDir Condition="'$(LuminBgfxLibDir)'==''">$(MSBuildThisFileDirectory)..\..\build-bgfx-libs\$(Configuration)\</LuminBgfxLibDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(LuminBgfx)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>Rtt_USE_BGFX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(LuminBgfxRoot)bgfx\include;$(LuminBgfxRoot)bx\include;$(LuminBgfxRoot)bimg\include;$(LuminBgfxRoot)bgfx\3rdparty\stb;$(LuminBgfxRoot)bgfx\tools\shaderc;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(LuminBgfxLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <!--
+        What cmake\lumin-bgfx produces. shaderc-lib pulls in the rest of the
+        compiler's dependencies, which are separate libraries rather than one,
+        so they are all named here; CMake works this out for its own consumers,
+        MSBuild cannot be told to.
+      -->
+      <AdditionalDependencies>bgfx.lib;bimg.lib;bx.lib;shaderc-lib.lib;fcpp.lib;glslang.lib;glsl-optimizer.lib;spirv-cross.lib;spirv-opt.lib;tint.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup />
+</Project>

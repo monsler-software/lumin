@@ -16,6 +16,10 @@
 #include "Rtt_PlatformSimulator.h"
 #include "Rtt_TargetDevice.h"
 #include "Rtt_WinSimulatorServices.h"
+#include "UI\Rtt_SimulatorMenus.h"
+#if defined( Rtt_USE_BGFX )
+#	include "UI\Rtt_MenuBar.h"
+#endif
 
 
 #pragma region Forward Declarations
@@ -172,6 +176,55 @@ class CSimulatorView : public CView
 		bool LoadSkinResources();
 		void GetFilePaths(LPCTSTR pattern, CStringArray& filepaths);
 		void OnRuntimeLoaded(Interop::RuntimeEnvironment& sender, const Interop::EventArgs& arguments);
+
+			/// <summary>How much of the top of the render surface the menu bar takes.</summary>
+			/// <remarks>
+			///  <para>
+			///   The bar is drawn by bgfx into the same surface Corona renders into, because bgfx renders into
+			///   one window. So that surface is taller than the device screen, and everything measured against
+			///   the screen -- the window size, the skin's placement, where a click landed -- has to take this
+			///   off first.
+			///  </para>
+			///  <para>Zero in a build without bgfx, which has no bar to make room for.</para>
+			/// </remarks>
+			static int GetMenuBarHeight();
+
+#if defined( Rtt_USE_BGFX )
+			/// <summary>Brings the menu bar up, once there is a bgfx renderer to draw it with.</summary>
+			/// <remarks>
+			///  Called after the runtime has loaded, since the renderer does not exist before that. Does nothing
+			///  if the bar is already up, or has already failed to come up.
+			/// </remarks>
+			void EnsureMenuBar();
+
+			/// <summary>Fills the bar in for whatever is loaded now.</summary>
+			/// <remarks>
+			///  Called again whenever that changes -- between the welcome screen and a project, and when
+			///  suspending flips the label on one of the items.
+			/// </remarks>
+			void UpdateMenuBar();
+
+			/// <summary>Draws the bar over the finished frame. Registered with the bgfx renderer.</summary>
+			static void RenderMenuBarOverlay(void* userdata, Rtt::U16 view, Rtt::U32 width, Rtt::U32 height);
+
+			/// <summary>Lets the bar go before bgfx does, which is every time the runtime is torn down.</summary>
+			static void ReleaseMenuBarOverlay(void* userdata);
+
+			/// <summary>Runs the command a menu item or an accelerator names.</summary>
+			static void OnMenuBarCommand(void* userdata, int command);
+
+			/// <summary>Gives the bar first refusal on the render surface's Windows messages.</summary>
+			/// <returns>Returns true if the bar took the message, in which case Corona must not also see it.</returns>
+			static bool OnRenderSurfaceMessage(void* userdata, UINT messageId, WPARAM wParam, LPARAM lParam);
+
+			/// <summary>The Windows command id that carries out a SimulatorCommand, or zero for none.</summary>
+			static UINT CommandIdFor(int command);
+
+			Rtt::MenuBar mMenuBar;
+
+			/// <summary>Set once bringing the bar up has failed, so it is not attempted again.</summary>
+			bool mMenuBarFailed;
+#endif
 
 
 		CCoronaControlContainer mCoronaContainerControl;

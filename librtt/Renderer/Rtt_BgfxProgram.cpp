@@ -842,6 +842,18 @@ BgfxProgram::Build( Program& program, Program::Version version, VersionData& dat
 
 	if ( !bgfx::isValid( vertexShader ) || !bgfx::isValid( fragmentShader ) )
 	{
+		// One of the two may well have been created. No program will own it, so
+		// nothing else would ever destroy it.
+		if ( bgfx::isValid( vertexShader ) )
+		{
+			bgfx::destroy( vertexShader );
+		}
+
+		if ( bgfx::isValid( fragmentShader ) )
+		{
+			bgfx::destroy( fragmentShader );
+		}
+
 		return false;
 	}
 

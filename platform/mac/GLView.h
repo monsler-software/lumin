@@ -23,7 +23,16 @@ namespace Rtt
 @class NSImage;
 @class SPILDTopLayerView;
 
+// Under bgfx this is a plain view.
+//
+// bgfx creates the graphics context itself, out of the window, and an NSOpenGLView would be a second context
+// on the same surface -- two renderers taking turns presenting it, which looks exactly like the flicker it
+// is. The view's job either way is the same: hand Corona its size, its input, and a place to draw.
+#if defined( Rtt_USE_BGFX )
+@interface GLView : NSView
+#else
 @interface GLView : NSOpenGLView
+#endif
 {
 	Rtt::Runtime* fRuntime;
 	NSPoint fStartPosition;
@@ -86,6 +95,20 @@ namespace Rtt
 
 //- (CGFloat)uprightWidth;
 //- (CGFloat)uprightHeight;
+
+// Brings the renderer up once there is a window to render into, and tells the delegate.
+//
+// Called from prepareOpenGL under OpenGL, which is AppKit's own "the context is ready" hook, and from
+// viewDidMoveToWindow under bgfx, which has no such hook because it has no context of AppKit's.
+- (void) prepareRenderer;
+
+// How much of the top of this view the simulator's menu bar takes.
+//
+// The bar is drawn by bgfx into the same surface Corona renders into, because bgfx renders into one window.
+// So this view is that much taller than the content, and everything measured against the content -- the
+// viewport, where a click landed -- has to take it off first. Zero without bgfx, and zero on a view that is
+// not the simulator's.
+- (CGFloat) menuBarHeight;
 
 - (void) suspendNativeDisplayObjects:(bool) showOverlay;
 - (void) resumeNativeDisplayObjects;

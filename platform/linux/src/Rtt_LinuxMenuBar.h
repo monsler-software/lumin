@@ -9,28 +9,31 @@
 
 #pragma once
 
-#include "UI/Rtt_MenuBar.h"
+#include "UI/Rtt_SimulatorMenus.h"
 
 #include <SDL2/SDL.h>
 
 namespace Rtt
 {
-	// What goes on the simulator's menu bar, and the keys that reach the same
-	// commands without it.
+	// What is between SDL and the simulator's menus.
 	//
-	// The bar itself is Rtt::MenuBar, which knows nothing about SDL or about
-	// Corona; this is the layer between them. It exists as its own file
-	// because the menus and their accelerators are one description of one
-	// thing, and keeping them side by side is what stops the two from drifting
+	// The menus themselves, and the chords their items advertise, are
+	// Rtt_SimulatorMenus.h: one description, shared by every host, so that a
+	// shortcut printed on an item and the key that triggers it cannot drift
 	// apart -- which is exactly what happened to the Dear ImGui bar this
 	// replaces, where a shortcut could be listed on an item and wired to a
 	// different command a few hundred lines away.
+	//
+	// What is left here is the two things only SDL can answer: which neutral
+	// key and modifiers an SDL_KeyboardEvent carries, and which of this host's
+	// `sdl` events a command turns into.
 
-	// isHomeScreen picks between the welcome screen's short bar and the fuller
-	// one a loaded project gets.
-	void BuildSimulatorMenus(bool isHomeScreen, std::vector<Menu>& menus);
-
-	// Turns a key press into the command an accelerator names, or -1 if the
-	// chord is not one of them. Commands are the `sdl` enum, plus SDL_QUIT.
+	// The command an accelerator names, or SimulatorCommand::kNone if the chord
+	// is not one of them.
 	int CommandForKeyEvent(const SDL_KeyboardEvent& key, bool isHomeScreen);
+
+	// The event this host pushes to carry out a SimulatorCommand -- one of the
+	// `sdl` enum, or SDL_QUIT. Zero for a command that is not dispatched that
+	// way, which is Suspend/Resume: the app acts on it directly.
+	int SdlEventForCommand(int command);
 }

@@ -8577,7 +8577,12 @@
 					"$(SYSTEM_APPS_DIR)/Steam.app/Contents/MacOS",
 				);
 				LIBRARY_SEARCH_PATHS_QUOTED_FOR_TARGET_1 = "\"$(SRCROOT)/../../modules/platform/mac/build/Release\"";
-				OTHER_LDFLAGS = "-ObjC";
+				/* The bgfx libraries, when built with the backend. Empty by default, so a normal build links
+				   exactly what it always did; see cmake/lumin-bgfx for what fills these in and how. */
+				LUMIN_BGFX_LIB_DIR = "";
+				LUMIN_BGFX_LDFLAGS = "";
+				OTHER_LDFLAGS = "-ObjC $(LUMIN_BGFX_LDFLAGS)";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(LUMIN_BGFX_LIB_DIR)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coronalabs.Corona_Simulator;
 				PRODUCT_NAME = template;
 				PROVISIONING_PROFILE = "";
@@ -8916,7 +8921,12 @@
 					"$(SYSTEM_APPS_DIR)/Steam.app/Contents/MacOS",
 				);
 				LIBRARY_SEARCH_PATHS_QUOTED_FOR_TARGET_1 = "\"$(SRCROOT)/../../modules/platform/mac/build/Release\"";
-				OTHER_LDFLAGS = "-ObjC";
+				/* The bgfx libraries, when built with the backend. Empty by default, so a normal build links
+				   exactly what it always did; see cmake/lumin-bgfx for what fills these in and how. */
+				LUMIN_BGFX_LIB_DIR = "";
+				LUMIN_BGFX_LDFLAGS = "";
+				OTHER_LDFLAGS = "-ObjC $(LUMIN_BGFX_LDFLAGS)";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(LUMIN_BGFX_LIB_DIR)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coronalabs.Corona_Simulator;
 				PRODUCT_NAME = "Corona Simulator";
 				PROVISIONING_PROFILE = "";
@@ -8977,7 +8987,12 @@
 					"$(SYSTEM_APPS_DIR)/Steam.app/Contents/MacOS",
 				);
 				LIBRARY_SEARCH_PATHS_QUOTED_FOR_TARGET_1 = "\"$(SRCROOT)/../../modules/platform/mac/build/Release\"";
-				OTHER_LDFLAGS = "-ObjC";
+				/* The bgfx libraries, when built with the backend. Empty by default, so a normal build links
+				   exactly what it always did; see cmake/lumin-bgfx for what fills these in and how. */
+				LUMIN_BGFX_LIB_DIR = "";
+				LUMIN_BGFX_LDFLAGS = "";
+				OTHER_LDFLAGS = "-ObjC $(LUMIN_BGFX_LDFLAGS)";
+				LIBRARY_SEARCH_PATHS = "$(inherited) $(LUMIN_BGFX_LIB_DIR)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.coronalabs.Corona_Simulator;
 				PRODUCT_NAME = "Corona Simulator";
 				PROVISIONING_PROFILE = "";

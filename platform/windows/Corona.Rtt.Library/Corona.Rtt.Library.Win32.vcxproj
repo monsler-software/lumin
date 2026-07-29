@@ -643,6 +643,7 @@
       <FileType>Document</FileType>
     </LuaToCpp>
     <LuaToCpp Include="..\..\..\librtt\Display\Shader\shell_default_vulkan.lua" />
+    <LuaToCpp Include="..\..\..\librtt\Display\Shader\shell_default_bgfx.lua" />
     <LuaToCpp Include="..\..\..\librtt\Display\Shader\kernel_filter_blurGaussianLinear_gl.lua" />
     <LuaToCpp Include="..\..\..\librtt\Display\Shader\kernel_filter_blurLinearHorizontal_gl.lua" />
     <LuaToCpp Include="..\..\..\librtt\Display\Shader\kernel_filter_blurLinearVertical_gl.lua" />
@@ -878,6 +879,12 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <!--
+    The bgfx backend. Imported for every configuration rather than per sheet
+    below, because it applies to all of them equally and does nothing at all
+    unless LuminBgfx is true.
+  -->
+  <Import Project="..\Bgfx.Definitions.props" />
   <ImportGroup Label="ExtensionSettings">
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug.Simulator|Win32'">
@@ -1062,6 +1069,48 @@ if NOT EXIST %LIBRARY% (
       <AdditionalLibraryDirectories>..\..\..\external\vulkan\Lib32;</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
+  <!--
+    Corona's own bgfx sources. Every one of them includes a bgfx or bx header,
+    which is why they are compiled as C++20 while the rest of the engine stays
+    on C++17, and why they are here rather than in the main source list: without
+    the libraries from cmake\lumin-bgfx they would not compile at all.
+
+    Rtt_SimulatorMenus.cpp is deliberately not in this group. The menus are a
+    description, not a drawing, and the host wants them whether or not it has a
+    bar to put them on.
+  -->
+  <ItemGroup Condition="'$(LuminBgfx)'=='true'">
+    <ClCompile Include="..\..\..\librtt\Renderer\Rtt_BgfxCommandBuffer.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="..\..\..\librtt\Renderer\Rtt_BgfxDrawState.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="..\..\..\librtt\Renderer\Rtt_BgfxFrameBufferObject.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="..\..\..\librtt\Renderer\Rtt_BgfxGeometry.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="..\..\..\librtt\Renderer\Rtt_BgfxProgram.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="..\..\..\librtt\Renderer\Rtt_BgfxRenderer.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="..\..\..\librtt\Renderer\Rtt_BgfxTexture.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="..\..\..\librtt\UI\Rtt_BgfxUIDraw.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <ClCompile Include="..\..\..\librtt\UI\Rtt_MenuBar.cpp">
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\librtt\UI\Rtt_SimulatorMenus.cpp" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\Build.Tools\LuaToCppTask.targets" />

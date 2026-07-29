@@ -297,10 +297,25 @@ RuntimeEnvironment::RuntimeEnvironment(const RuntimeEnvironment::CreationSetting
 		const char * backend = fReadOnlyProjectSettings.Backend();
 		bool requireVulkan = strcmp(backend, "requireVulkan") == 0;
 
-		if (requireVulkan || strcmp(backend, "wantVulkan") == 0)
+		bool requireBgfx = strcmp(backend, "requireBgfx") == 0;
+
+		if (requireBgfx || strcmp(backend, "wantBgfx") == 0)
+		{
+			params.SetBgfxWanted(requireBgfx);
+		}
+		else if (requireVulkan || strcmp(backend, "wantVulkan") == 0)
 		{
 			params.SetVulkanWanted(requireVulkan);
 		}
+#if defined( Rtt_USE_BGFX )
+		else
+		{
+			// bgfx is what this build renders with unless a project asked for something else by name. The
+			// simulator's own chrome -- its menu bar -- is drawn through the bgfx renderer's overlay hook,
+			// and there is no other bar left to fall back on.
+			params.SetBgfxWanted(false);
+		}
+#endif
 
 		fRenderSurfacePointer = new Interop::UI::RenderSurfaceControl(settings.RenderSurfaceHandle, params);
 		fRenderSurfacePointer->SetRenderFrameHandler(&fRenderFrameEventHandler);
@@ -1367,7 +1382,11 @@ OperationResult RuntimeEnvironment::RunUsing(const RuntimeEnvironment::CreationS
 	fRuntimePointer->SetProperty(Rtt::Runtime::kRenderAsync, true);
 	fRuntimePointer->SetProperty(Rtt::Runtime::kShouldVerifyLicense, true);
 
-	if (fRenderSurfacePointer->IsUsingVulkanBackend())
+	if (fRenderSurfacePointer->IsUsingBgfxBackend())
+	{
+		fRuntimePointer->SetBackend("bgfxBackend", fRenderSurfacePointer->GetBackendContext());
+	}
+	else if (fRenderSurfacePointer->IsUsingVulkanBackend())
 	{
 		fRuntimePointer->SetBackend("vulkanBackend", fRenderSurfacePointer->GetBackendContext());
 	}

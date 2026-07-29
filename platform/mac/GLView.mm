@@ -42,6 +42,31 @@
 #include "Rtt_Event.h"
 
 #include "Rtt_Runtime.h"
+#include "UI/Rtt_SimulatorMenus.h"
+#if defined( Rtt_USE_BGFX )
+	#include "Renderer/Rtt_BgfxRenderer.h"
+	#include "UI/Rtt_MenuBar.h"
+#endif
+
+@interface GLView (MenuBar)
+- (CGFloat) menuBarHeight;
+#if defined( Rtt_USE_BGFX )
+- (void) ensureMenuBar;
+- (void) updateMenuBar;
+
+// Gives the bar first refusal on an event. Returns YES if it took it, in which case nothing else may see it:
+// a click that opens a menu is not also a touch on the content underneath.
+- (BOOL) menuBarHandlesMouseEvent:(NSEvent*)event;
+
+// Whether this view is the one the bar is drawn into. There is one bar and several GLViews -- CoronaCards
+// and the tool windows use the same class -- so everything the bar does is asked this first.
+- (BOOL) menuBarIsMine;
+
+// Closes whatever is open, without choosing anything.
+- (void) closeMenuBar;
+#endif
+@end
+
 #include "Rtt_MPlatformDevice.h"
 #include "Rtt_MacPlatform.h"
 #include "Rtt_Display.h"
@@ -234,9 +259,14 @@ NSOpenGLPixelFormatAttribute attributes1 [] = {
 - (id)initWithFrame:(NSRect)frameRect
 {
     NSDEBUG(@"GLView: initWithFrame: %@", NSStringFromRect(frameRect));
+#if defined( Rtt_USE_BGFX )
+	// No pixel format: bgfx chooses its own, on its own surface. See the note on the class declaration.
+	self = [super initWithFrame: frameRect];
+#else
 	NSOpenGLPixelFormat * pf = [GLView basicPixelFormat];
 
 	self = [super initWithFrame: frameRect pixelFormat: pf];
+#endif
 	
 	if ( self )
 	{
@@ -293,17 +323,38 @@ NSOpenGLPixelFormatAttribute attributes1 [] = {
 
 	[super dealloc];
 }
+#if !defined( Rtt_USE_BGFX )
 - (void) reshape
 {	
 	[super reshape];
 	
 }
+
 - (void) prepareOpenGL
 {
-    NSDEBUG(@"XXX: GLView: prepareOpenGL: fRuntime %p, self.isReady %s", fRuntime, (self.isReady ? "YES" : "NO"));
-	//[super prepareOpenGL];
+	[self prepareRenderer];
+}
+#else
+- (void) viewDidMoveToWindow
+{
+	[super viewDidMoveToWindow];
 
+	// bgfx wants the window, and until the view is in one there is nothing to give it. This is the nearest
+	// thing bgfx has to prepareOpenGL, which AppKit only calls on a view that owns a GL context.
+	if ( [self window] != nil )
+	{
+		[self prepareRenderer];
+	}
+}
+#endif
+
+- (void) prepareRenderer
+{
+    NSDEBUG(@"XXX: GLView: prepareRenderer: fRuntime %p, self.isReady %s", fRuntime, (self.isReady ? "YES" : "NO"));
+
+#if !defined( Rtt_USE_BGFX )
 	[[self openGLContext] makeCurrentContext];
+#endif
 
 	Rtt::Display *display = NULL;
 
@@ -321,9 +372,11 @@ NSOpenGLPixelFormatAttribute attributes1 [] = {
 
 	if (self.isReady == NO)
 	{
+#if !defined( Rtt_USE_BGFX )
 		glClearColor( 0.0, 0.0, 0.0, 1.0 );
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 //        [[self openGLContext] flushBuffer];
+#endif
 		
 		self.isReady = YES;
 		
@@ -336,6 +389,12 @@ NSOpenGLPixelFormatAttribute attributes1 [] = {
 		{
 			fRuntime->SetContentOrientation( fOrientation );
 			display->GetRenderer().Initialize();
+
+#if defined( Rtt_USE_BGFX )
+			// There is a renderer now, which is the one thing the bar was waiting for.
+			[self ensureMenuBar];
+#endif
+
 			[self invalidate];
 		}
 	}
@@ -356,7 +415,9 @@ NSOpenGLPixelFormatAttribute attributes1 [] = {
 		[self invalidate];
 	}
 
+#if !defined( Rtt_USE_BGFX )
 	[[self openGLContext] makeCurrentContext];
+#endif
 
     
     
@@ -367,7 +428,11 @@ NSOpenGLPixelFormatAttribute attributes1 [] = {
 		fRuntime->Render();
 	}
     
+#if !defined( Rtt_USE_BGFX )
     [[self openGLContext] flushBuffer];
+#else
+	// bgfx presents at the end of its own frame, in bgfx::frame(), which Corona's command buffer calls.
+#endif
 }
 
 - (void)setDelegate:(id< GLViewDelegate >)delegate
@@ -383,7 +448,13 @@ NSOpenGLPixelFormatAttribute attributes1 [] = {
 		fRuntime->GetDisplay().Invalidate();
 	}
 
+#if defined( Rtt_USE_BGFX )
+	// -update is NSOpenGLView's, and is about telling a context its view moved. There is no such context
+	// here; asking for a redraw is the whole of what this meant.
+	[self setNeedsDisplay:YES];
+#else
 	[self update];
+#endif
 }
 
 - (BOOL) isOpaque
@@ -595,6 +666,13 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 - (void)mouseDown:(NSEvent*)event
 {
+#if defined( Rtt_USE_BGFX )
+	// The bar gets first refusal; see -menuBarHandlesMouseEvent:.
+	if ( [self menuBarHandlesMouseEvent:event] )
+	{
+		return;
+	}
+#endif
     using namespace Rtt;
     
 	// NSDEBUG( @"mouseDown: %@", event );
@@ -649,6 +727,13 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 - (void)mouseDragged:(NSEvent*)event
 {
+#if defined( Rtt_USE_BGFX )
+	// The bar gets first refusal; see -menuBarHandlesMouseEvent:.
+	if ( [self menuBarHandlesMouseEvent:event] )
+	{
+		return;
+	}
+#endif
 	using namespace Rtt;
 
 	// NSDEBUG( @"mouseDragged: %@", event );
@@ -688,6 +773,13 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 - (void)mouseUp:(NSEvent*)event
 {
+#if defined( Rtt_USE_BGFX )
+	// The bar gets first refusal; see -menuBarHandlesMouseEvent:.
+	if ( [self menuBarHandlesMouseEvent:event] )
+	{
+		return;
+	}
+#endif
 	using namespace Rtt;
 
 	if ([self endWindowMovement])
@@ -879,16 +971,21 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 - (CGFloat) viewportHeight
 {
+	CGFloat height;
+
     if ( Rtt::DeviceOrientation::IsSideways( fOrientation ) )
 	{
 		// Rtt_TRACE(("viewportHeight: %g\n", nativeFrameRect.size.width * (zoomLevel * scaleFactor)));
-		return nativeFrameRect.size.width * (zoomLevel * scaleFactor);
+		height = nativeFrameRect.size.width * (zoomLevel * scaleFactor);
 	}
 	else
 	{
 		// Rtt_TRACE(("viewportHeight: %g\n", nativeFrameRect.size.height * (zoomLevel * scaleFactor)));
-		return nativeFrameRect.size.height * (zoomLevel * scaleFactor);
+		height = nativeFrameRect.size.height * (zoomLevel * scaleFactor);
 	}
+
+	// The top of the view belongs to the menu bar, not to Corona; see -menuBarHeight.
+	return height - [self menuBarHeight];
 }
 
 - (CGFloat)deviceWidth
@@ -910,6 +1007,11 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 - (void) suspendNativeDisplayObjects:(bool) showOverlay
 {
+#if defined( Rtt_USE_BGFX )
+	// The Suspend/Resume item's label is the state, so the menus are rebuilt rather than re-read.
+	[self updateMenuBar];
+#endif
+
 #if Rtt_AUTHORING_SIMULATOR
 	// TODO: Figure out what 'suspend' really means for native display objects.
 	// Right now, we know we need to suspend video.
@@ -959,6 +1061,11 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 - (void) resumeNativeDisplayObjects
 {
+#if defined( Rtt_USE_BGFX )
+	// The Suspend/Resume item's label is the state, so the menus are rebuilt rather than re-read.
+	[self updateMenuBar];
+#endif
+
 #if Rtt_AUTHORING_SIMULATOR
     if ( nil != suspendedOverlay )
     {
@@ -1073,6 +1180,13 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 - (void)mouseMoved:(NSEvent *)event
 {
+#if defined( Rtt_USE_BGFX )
+	// The bar gets first refusal; see -menuBarHandlesMouseEvent:.
+	if ( [self menuBarHandlesMouseEvent:event] )
+	{
+		return;
+	}
+#endif
 	using namespace Rtt;
 
 	if ( sendAllMouseEvents )
@@ -1128,6 +1242,13 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 - (void)scrollWheel:(NSEvent *)event
 {
+#if defined( Rtt_USE_BGFX )
+	// The bar gets first refusal; see -menuBarHandlesMouseEvent:.
+	if ( [self menuBarHandlesMouseEvent:event] )
+	{
+		return;
+	}
+#endif
     using namespace Rtt;
     
 	// NSDEBUG( @"scrollWheel: %@", event );
@@ -1372,5 +1493,324 @@ static U32 *sTouchId = (U32*)(& kTapTolerance); // any arbitrary pointer value w
 
 	return YES;
 }
+
+@end
+
+#pragma mark - Menu bar
+
+// The simulator's menu bar.
+//
+// macOS used to have an AppKit main menu, from the nib, and it was one of three descriptions of the same
+// menus -- an MFC resource on Windows, a Dear ImGui bar on Linux -- which had drifted apart. Under bgfx the
+// window is bgfx's, so the bar is drawn into it like everything else: Rtt::MenuBar, filled in from
+// UI/Rtt_SimulatorMenus.h, which is the one description all three hosts now share.
+
+#if defined( Rtt_USE_BGFX )
+
+// One bar, on the simulator's view. A GLView is also what CoronaCards and the various tool windows render
+// into, and none of those has a simulator menu to show.
+static Rtt::MenuBar sMenuBar;
+static GLView* sMenuBarView = nil;
+static bool sMenuBarFailed = false;
+
+// The selector that carries out a command. Sent down the responder chain rather than to a particular object:
+// zoom belongs to the window, the rest to the application delegate, and the chain already knows which.
+static SEL SelectorForCommand( int command )
+{
+	switch ( command )
+	{
+		case Rtt::SimulatorCommand::kNewProject:			return @selector(presentNewProject:);
+		case Rtt::SimulatorCommand::kOpenProject:			return @selector(open:);
+		case Rtt::SimulatorCommand::kOpenInEditor:			return @selector(openMainLuaInEditor:);
+		case Rtt::SimulatorCommand::kShowProjectFiles:		return @selector(showProjectFiles:);
+		case Rtt::SimulatorCommand::kShowProjectSandbox:	return @selector(showProjectSandbox:);
+		case Rtt::SimulatorCommand::kClearProjectSandbox:	return @selector(clearProjectSandbox:);
+
+		// With nothing loaded, relaunching "the last project" is what the one relaunch command does.
+		case Rtt::SimulatorCommand::kRelaunch:
+		case Rtt::SimulatorCommand::kRelaunchLastProject:	return @selector(launchSimulator:);
+
+		case Rtt::SimulatorCommand::kCloseProject:			return @selector(close:);
+		case Rtt::SimulatorCommand::kOpenPreferences:		return @selector(showPreferences:);
+		case Rtt::SimulatorCommand::kQuit:					return @selector(terminate:);
+
+		case Rtt::SimulatorCommand::kBuildAndroid:			return @selector(openForBuildAndroid:);
+		case Rtt::SimulatorCommand::kBuildHTML5:			return @selector(openForBuildHTML5:);
+		case Rtt::SimulatorCommand::kBuildLinux:			return @selector(openForBuildLinux:);
+
+		case Rtt::SimulatorCommand::kRotateLeft:			return @selector(rotateLeft:);
+		case Rtt::SimulatorCommand::kRotateRight:			return @selector(rotateRight:);
+		case Rtt::SimulatorCommand::kShake:					return @selector(shake:);
+		case Rtt::SimulatorCommand::kSuspendResume:			return @selector(toggleSuspendResume:);
+
+		case Rtt::SimulatorCommand::kZoomIn:				return @selector(zoomIn:);
+		case Rtt::SimulatorCommand::kZoomOut:				return @selector(zoomOut:);
+		case Rtt::SimulatorCommand::kSetFocusConsole:		return @selector(consoleMenuitem:);
+		case Rtt::SimulatorCommand::kViewAs:				return @selector(viewAsAction:);
+
+		case Rtt::SimulatorCommand::kOpenDocumentation:		return @selector(showHelp:);
+
+		// The welcome window is where the samples are offered from; there is no separate place to send this.
+		case Rtt::SimulatorCommand::kOpenSampleProjects:	return @selector(presentWelcomeWindow:);
+
+		case Rtt::SimulatorCommand::kAbout:					return @selector(orderFrontStandardAboutPanel:);
+
+		default:											return nil;
+	}
+}
+
+// Which of the keys an accelerator can be built on this character is, if any.
+static int SimulatorKeyForEvent( NSEvent* event )
+{
+	switch ( [event keyCode] )
+	{
+		case 123:	return Rtt::SimulatorKey::kLeft;
+		case 124:	return Rtt::SimulatorKey::kRight;
+		case 126:	return Rtt::SimulatorKey::kUp;
+		case 125:	return Rtt::SimulatorKey::kDown;
+		default:	break;
+	}
+
+	// charactersIgnoringModifiers, so that the letter is the one printed on the key rather than whatever
+	// Command happens to make of it.
+	NSString* characters = [event charactersIgnoringModifiers];
+
+	if ( [characters length] == 0 )
+	{
+		return Rtt::SimulatorKey::kNone;
+	}
+
+	switch ( [characters characterAtIndex:0] )
+	{
+		case 'b': case 'B':	return Rtt::SimulatorKey::kB;
+		case 'n': case 'N':	return Rtt::SimulatorKey::kN;
+		case 'o': case 'O':	return Rtt::SimulatorKey::kO;
+		case 'q': case 'Q':	return Rtt::SimulatorKey::kQ;
+		case 'r': case 'R':	return Rtt::SimulatorKey::kR;
+		case 'w': case 'W':	return Rtt::SimulatorKey::kW;
+
+		// Zoom is spelled with Plus and Minus on the menu. The plus is whatever key carries it unshifted,
+		// which is '=' on most layouts.
+		case '=': case '+':	return Rtt::SimulatorKey::kPlus;
+		case '-': case '_':	return Rtt::SimulatorKey::kMinus;
+
+		default:			return Rtt::SimulatorKey::kNone;
+	}
+}
+
+static Rtt::U32 SimulatorModifiersForEvent( NSEvent* event )
+{
+	NSEventModifierFlags flags = [event modifierFlags];
+	Rtt::U32 modifiers = Rtt::SimulatorModifier::kNone;
+
+	// Command is the primary modifier here, which is the whole reason the shared table names it that way
+	// rather than naming Control.
+	if ( flags & NSEventModifierFlagCommand )	modifiers |= Rtt::SimulatorModifier::kPrimary;
+	if ( flags & NSEventModifierFlagShift )		modifiers |= Rtt::SimulatorModifier::kShift;
+	if ( flags & NSEventModifierFlagOption )	modifiers |= Rtt::SimulatorModifier::kAlt;
+
+	return modifiers;
+}
+
+static void MenuBarCommandHandler( void* userdata, int command )
+{
+	SEL selector = SelectorForCommand( command );
+
+	if ( selector != nil )
+	{
+		[NSApp sendAction:selector to:nil from:(GLView*)userdata];
+	}
+}
+
+static void MenuBarRenderOverlay( void* userdata, Rtt::U16 view, Rtt::U32 width, Rtt::U32 height )
+{
+	sMenuBar.Render( view, width, height );
+}
+
+static void MenuBarReleaseOverlay( void* userdata )
+{
+	// The menus themselves are kept: they are plain data, and the next runtime's bar wants the same ones.
+	// Only the bgfx handles go.
+	sMenuBar.Finalize();
+}
+
+#endif // Rtt_USE_BGFX
+
+
+@implementation GLView (Accelerators)
+
+#if defined( Rtt_USE_BGFX )
+
+// The chords the menu items advertise. AppKit used to notice these itself, because the items were AppKit's;
+// with the bar drawn by bgfx there is no NSMenu left to consult, so the same table the items are printed
+// from is asked directly. -performKeyEquivalent: is where AppKit would have consulted the menu, and it runs
+// before -keyDown:, so Corona never sees a chord that is a command.
+- (BOOL) performKeyEquivalent:(NSEvent*)event
+{
+	if ( ! [self menuBarIsMine] )
+	{
+		return [super performKeyEquivalent:event];
+	}
+
+	int command = Rtt::CommandForAccelerator(
+			false, SimulatorKeyForEvent( event ), SimulatorModifiersForEvent( event ) );
+
+	if ( Rtt::SimulatorCommand::kNone == command )
+	{
+		return [super performKeyEquivalent:event];
+	}
+
+	[self closeMenuBar];
+
+	MenuBarCommandHandler( self, command );
+
+	return YES;
+}
+
+#endif
+
+@end
+
+@implementation GLView (MenuBar)
+
+- (CGFloat) menuBarHeight
+{
+#if defined( Rtt_USE_BGFX )
+	if ( isSimulatorView && sMenuBar.IsInitialized() && ( sMenuBarView == self ) )
+	{
+		return (CGFloat)Rtt::MenuBar::GetHeight();
+	}
+#endif
+	return 0;
+}
+
+#if defined( Rtt_USE_BGFX )
+
+// Brings the bar up, once there is a bgfx renderer to draw it with -- which is not until the runtime has
+// built one, so this is called from -prepareRenderer rather than from init.
+- (void) ensureMenuBar
+{
+	if ( ! isSimulatorView || sMenuBarFailed || sMenuBar.IsInitialized() )
+	{
+		return;
+	}
+	if ( fRuntime == NULL )
+	{
+		return;
+	}
+
+	Rtt::Renderer& renderer = fRuntime->GetDisplay().GetRenderer();
+	Rtt::BgfxRenderer* bgfxRenderer = dynamic_cast< Rtt::BgfxRenderer* >( &renderer );
+
+	if ( bgfxRenderer == NULL )
+	{
+		// A project asked for another backend by name. Without bgfx there is nowhere to draw a bar; every
+		// command on it still has a keyboard shortcut, which -performKeyEquivalent: below keeps working.
+		sMenuBarFailed = true;
+		return;
+	}
+
+	// The bar bakes its own atlas out of a TrueType file. Helvetica is present on every macOS the simulator
+	// supports, and is what the menus were drawn in when AppKit was drawing them.
+	NSData* fontData = nil;
+	{
+		CTFontRef font = CTFontCreateWithName( CFSTR("Helvetica"), 13.0, NULL );
+
+		if ( font != NULL )
+		{
+			// The whole font file, which is what the bar bakes from -- not a table out of it.
+			CFURLRef url = (CFURLRef)CTFontCopyAttribute( font, kCTFontURLAttribute );
+
+			if ( url != NULL )
+			{
+				fontData = [NSData dataWithContentsOfURL:(NSURL*)url];
+				CFRelease( url );
+			}
+
+			CFRelease( font );
+		}
+	}
+
+	// Without a bar the simulator is harder to use but still runs. Remembered rather than retried, because
+	// bringing the bar up compiles two shaders.
+	if ( ( fontData == nil ) || ! sMenuBar.Initialize( [fontData bytes], [fontData length] ) )
+	{
+		sMenuBarFailed = true;
+		Rtt_LogException( "WARNING: the simulator's menu bar could not be created\n" );
+		return;
+	}
+
+	sMenuBarView = self;
+
+	sMenuBar.SetCommandHandler( &MenuBarCommandHandler, self );
+	bgfxRenderer->SetOverlay( &MenuBarRenderOverlay, &MenuBarReleaseOverlay, self );
+
+	[self updateMenuBar];
+}
+
+// Fills the bar in for whatever is loaded now. Called again whenever that changes -- between the welcome
+// screen and a project, and when suspending flips the label on one of the items.
+- (void) updateMenuBar
+{
+	if ( ! sMenuBar.IsInitialized() )
+	{
+		return;
+	}
+
+	// The simulator's own view only ever shows a project; the welcome screen is a window of its own, which is
+	// not a GLView at all.
+	std::vector< Rtt::Menu > menus;
+
+	Rtt::BuildSimulatorMenus( false, ( fRuntime != NULL ) && fRuntime->IsSuspended(), menus );
+
+	sMenuBar.SetMenus( menus );
+}
+
+- (BOOL) menuBarIsMine
+{
+	return ( sMenuBar.IsInitialized() && ( sMenuBarView == self ) ) ? YES : NO;
+}
+
+- (void) closeMenuBar
+{
+	sMenuBar.Close();
+}
+
+- (BOOL) menuBarHandlesMouseEvent:(NSEvent*)event
+{
+	if ( ! [self menuBarIsMine] )
+	{
+		return NO;
+	}
+
+	// The bar's own coordinates have y growing downward from the top of the view, which is neither what
+	// AppKit reports nor what -adjustPoint: produces: that one is Corona's, and starts below the bar.
+	NSPoint point = [self convertPoint:[event locationInWindow] fromView:nil];
+	int x = (int)point.x;
+	int y = (int)( [self bounds].size.height - point.y );
+
+	switch ( [event type] )
+	{
+		case NSEventTypeMouseMoved:
+		case NSEventTypeLeftMouseDragged:
+			return sMenuBar.OnMouseMove( x, y ) ? YES : NO;
+
+		case NSEventTypeLeftMouseDown:
+			return sMenuBar.OnMouseDown( x, y ) ? YES : NO;
+
+		case NSEventTypeLeftMouseUp:
+			return sMenuBar.OnMouseUp( x, y ) ? YES : NO;
+
+		case NSEventTypeScrollWheel:
+			// Nothing on the bar scrolls, but a wheel event while a menu is open should not reach the content
+			// behind it either.
+			return sMenuBar.IsOpen() ? YES : NO;
+
+		default:
+			return NO;
+	}
+}
+
+#endif // Rtt_USE_BGFX
 
 @end

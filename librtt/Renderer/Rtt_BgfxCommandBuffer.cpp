@@ -736,7 +736,6 @@ BgfxCommandBuffer::ApplyViewRects()
 {
 	if ( fState.fViewport[2] > 0 && fState.fViewport[3] > 0 )
 	{
-		if ( getenv("LUMIN_VIEWLOG") && 0 == fState.fCurrentView ) fprintf(stderr, "VIEW0 corona=(%d,%d,%d,%d) -> bgfx y=%d surfaceH=%u\n", fState.fViewport[0],fState.fViewport[1],fState.fViewport[2],fState.fViewport[3], (int)ViewRectTop(fState.fViewport[1], fState.fViewport[3]), fRenderer.GetSurfaceHeight());
 		bgfx::setViewRect(
 			  fState.fCurrentView
 			, U16( fState.fViewport[0] )
@@ -1325,6 +1324,11 @@ BgfxCommandBuffer::Execute( bool measureGPU )
 	// Any view a render target held is stale once the numbering restarts, so
 	// the next frame starts aimed at the window again.
 	fState.fCurrentView = 0;
+
+	// Nothing a display object owns is remembered past the frame that bound it:
+	// the object may be gone by the next one, and every draw re-sends what is
+	// remembered. See BgfxDrawState::ReleaseObjectBindings.
+	fState.ReleaseObjectBindings();
 
 	if ( measureGPU )
 	{

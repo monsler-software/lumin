@@ -13,6 +13,7 @@
 #include "Interop\Event.h"
 #include "Interop\HandledEventArgs.h"
 #include "Control.h"
+#include "Renderer\Rtt_BgfxSurfaceParams.h"
 #include <memory>
 #include <string>
 #include <Windows.h>
@@ -112,9 +113,30 @@ class RenderSurfaceControl : public Control
 			/// <returns>Returns true if Vulkan must be the backend; if optional or not even requested, false.</returns>
 			bool IsVulkanRequired() const;
 
+			/// <summary>Set bgfx as the preferred rendering backend.</summary>
+			/// <remarks>
+			///  <para>
+			///   Unlike Vulkan and OpenGL, bgfx is not given a context this surface made: it takes the window
+			///   itself and makes its own. So there is nothing here to create or select, and the surface's job
+			///   for bgfx is only to describe the window.
+			///  </para>
+			/// </remarks>
+			/// <param name="required">If true, we must use bgfx, else fail; otherwise, we can fall back to OpenGL.</param>
+			void SetBgfxWanted(bool required);
+
+			/// <summary>Get the bgfx-related preferred backend status.</summary>
+			/// <returns>Returns true if bgfx is the preferred backend, false otherwise.</returns>
+			bool IsBgfxWanted() const;
+
+			/// <summary>Get the bgfx-related backend necessity status.</summary>
+			/// <returns>Returns true if bgfx must be the backend; if optional or not even requested, false.</returns>
+			bool IsBgfxRequired() const;
+
 		private:
 			bool fWantVulkan;
 			bool fRequireVulkan;
+			bool fWantBgfx;
+			bool fRequireBgfx;
 		};
 
 		#pragma region Constructors/Destructors
@@ -183,8 +205,44 @@ class RenderSurfaceControl : public Control
 		/// </remarks>
 		void RequestRender();
 
+		/// <summary>A callback given first refusal on this surface's Windows messages.</summary>
+		/// <remarks>
+		///  For whatever the host draws over the surface -- the simulator's menu bar, so far. Return true to
+		///  consume the message, in which case Corona never sees it: a click that opens a menu is not also a
+		///  touch on the content underneath.
+		/// </remarks>
+		typedef bool (*MessageFilterProc)(void *userdata, UINT messageId, WPARAM wParam, LPARAM lParam);
+
+		/// <summary>Sets the callback given first refusal on this surface's Windows messages.</summary>
+		/// <param name="proc">The callback. Null removes whatever was set.</param>
+		/// <param name="userdata">Passed back to the callback unread.</param>
+		void SetMessageFilter(MessageFilterProc proc, void *userdata);
+
+		/// <summary>Reserves the top of the surface for whatever the host draws over it.</summary>
+		/// <remarks>
+		///  <para>
+		///   The simulator's menu bar is drawn into the same surface Corona renders into -- it has to be, since
+		///   bgfx renders into one window -- so the top of that surface is not Corona's to use. This is how much
+		///   of it is spoken for; Corona is told a surface that much shorter, and lays its content out below.
+		///  </para>
+		///  <para>
+		///   The surface itself is not resized. bgfx still presents the whole window, which is what leaves the
+		///   reserved strip somewhere for the host to draw.
+		///  </para>
+		/// </remarks>
+		/// <param name="height">Height in pixels. Zero, the default, leaves the whole surface to Corona.</param>
+		void SetOverlayHeight(int height);
+
+		/// <summary>Gets how much of the top of the surface is reserved. See SetOverlayHeight().</summary>
+		int GetOverlayHeight() const;
+
 		bool IsUsingVulkanBackend() const { return !!fVulkanContext; }
-		void * GetBackendContext() const { return IsUsingVulkanBackend() ? fVulkanContext : nullptr; }
+
+		/// <summary>Determines whether the runtime should be pointed at the bgfx backend.</summary>
+		/// <returns>Returns true if this surface described a window for bgfx to render into.</returns>
+		bool IsUsingBgfxBackend() const { return fIsUsingBgfx; }
+
+		void * GetBackendContext() const;
 
 		#pragma endregion
 
@@ -274,6 +332,25 @@ class RenderSurfaceControl : public Control
 
 		/// <summary>Vulkan analogue to the GL context, when chosen as the backend.</summary>
 		void * fVulkanContext;
+
+		/// <summary>How much of the top of the surface the host has reserved. See SetOverlayHeight().</summary>
+		int fOverlayHeight;
+
+		/// <summary>The host's first-refusal message callback, or null. See SetMessageFilter().</summary>
+		MessageFilterProc fMessageFilterProc;
+
+		/// <summary>Passed to fMessageFilterProc unread.</summary>
+		void *fMessageFilterUserdata;
+
+		/// <summary>Set true once this surface has described its window for bgfx.</summary>
+		/// <remarks>
+		///  There is no context to hold, unlike the other two backends, so this is what "the surface is a bgfx
+		///  surface" is: bgfx itself is brought up later, by the renderer, out of the description below.
+		/// </remarks>
+		bool fIsUsingBgfx;
+
+		/// <summary>What bgfx is given to reach this control's window. Only meaningful when fIsUsingBgfx.</summary>
+		Rtt::BgfxSurfaceParams fBgfxSurfaceParams;
 
 		#pragma endregion
 };

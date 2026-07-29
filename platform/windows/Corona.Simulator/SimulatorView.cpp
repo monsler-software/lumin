@@ -9,6 +9,7 @@
 
 #include "stdafx.h"
 #include <shlwapi.h>
+#include <windowsx.h>	// GET_X_LPARAM
 #include <gdiplus.h>
 #include <stdlib.h>
 #include <math.h>
@@ -49,6 +50,11 @@
 #include "CoronaInterface.h"
 #include "Rtt_SimulatorRecents.h"
 #include "CustomDeviceDlg.h"
+#include "UI\Rtt_SimulatorMenus.h"
+#if defined( Rtt_USE_BGFX )
+#	include "Renderer\Rtt_BgfxRenderer.h"
+#	include <vector>
+#endif
 
 // ----------------------------------------------------------------------------
 
@@ -168,6 +174,9 @@ CSimulatorView::CSimulatorView()
 	mShakeNum = 0;
 	m_nSkinId = Rtt::TargetDevice::kUnknownSkin;
 	mRelaunchCount = 0;
+#if defined( Rtt_USE_BGFX )
+	mMenuBarFailed = false;
+#endif
 }
 
 /// Destructor. Destroys owned objects.
@@ -393,6 +402,20 @@ void CSimulatorView::OnTimer(UINT nIDEvent)
 	switch (nIDEvent)
 	{
 	case TIMER_ID_CHECK_APP:
+#if defined( Rtt_USE_BGFX )
+		// A suspended runtime advances nothing and so ends no frames, which under bgfx means the window stops
+		// being presented at all -- and the bar has to keep working while suspended, since Resume is on it.
+		// So it gets a frame of its own for as long as that lasts.
+		if (mMenuBar.IsInitialized() && IsSimulationSuspended())
+		{
+			auto& renderer = mRuntimeEnvironmentPointer->GetRuntime()->GetDisplay().GetRenderer();
+			auto bgfxRendererPointer = dynamic_cast<Rtt::BgfxRenderer*>(&renderer);
+			if (bgfxRendererPointer)
+			{
+				bgfxRendererPointer->RenderOverlayFrame(true);
+			}
+		}
+#endif
 		if (applicationPointer!= NULL && applicationPointer->GetRelaunchSimStyle() != RELAUNCH_SIM_NEVER)
 		{
 			if (HasApplicationChanged())
@@ -465,7 +488,13 @@ void CSimulatorView::OnDraw(CDC* pDC)
 		mfcbitmap.Attach(hBmp);
 		dcMemory.SelectObject(&mfcbitmap);
 		pDC->SetStretchBltMode(COLORONCOLOR);  // improves skin rendering dramatically
-		pDC->StretchBlt(0, 0, rect.Width(), rect.Height(), &dcMemory, 0, 0, pBitmap->GetWidth(), pBitmap->GetHeight(), SRCCOPY);
+		// The window is taller than the skin by the menu bar, which is drawn by bgfx into the render surface
+		// rather than painted here; the skin goes below it, unstretched. Zero without bgfx.
+		const int menuBarHeight = GetMenuBarHeight();
+
+		pDC->StretchBlt(
+				0, menuBarHeight, rect.Width(), rect.Height() - menuBarHeight,
+				&dcMemory, 0, 0, pBitmap->GetWidth(), pBitmap->GetHeight(), SRCCOPY);
 	}
 	else
 	{
@@ -1569,6 +1598,13 @@ void CSimulatorView::OnRuntimeLoaded(Interop::RuntimeEnvironment& sender, const 
 	// Store the rotation value.
 	SetRotation( launchRotation );
 
+#if defined( Rtt_USE_BGFX )
+	// The bar can only be brought up once there is a renderer to draw it with, which is now. It also decides
+	// how much of the surface is not Corona's, so it has to happen before the window is laid out below.
+	EnsureMenuBar();
+	UpdateMenuBar();
+#endif
+
 	// Update the window for the current skin and rotation.
 	UpdateSimulatorSkin();
 }
@@ -1756,16 +1792,29 @@ void CSimulatorView::SuspendResumeSimulationWithOverlay(bool showOverlay, bool s
 	}
 	if (runtimePointer->IsSuspended())
 	{
+#if defined( Rtt_USE_BGFX )
+		// The window stays enabled, and the Corona control stays visible: the bar is drawn into that control,
+		// and Resume is on the bar. It says "Suspended" itself, which is also all a suspended runtime draws.
+		if (showOverlay)
+		{
+			mMenuBar.SetStatusText("Suspended");
+		}
+#else
 		if (showOverlay)
 		{
 			mCoronaContainerControl.SetWindowTextW(L"Suspended");
 			mCoronaContainerControl.GetCoronaControl().ShowWindow(SW_HIDE);
 		}
 		EnableWindow(FALSE);
+#endif
 	}
 	else
 	{
+#if defined( Rtt_USE_BGFX )
+		mMenuBar.SetStatusText(nullptr);
+#else
 		EnableWindow(TRUE);
+#endif
 		if (mCoronaContainerControl.GetCoronaControl().IsWindowVisible() == FALSE)
 		{
 			mCoronaContainerControl.SetWindowTextW(L"");
@@ -1773,6 +1822,11 @@ void CSimulatorView::SuspendResumeSimulationWithOverlay(bool showOverlay, bool s
 			mCoronaContainerControl.GetCoronaControl().SetFocus();
 		}
 	}
+
+#if defined( Rtt_USE_BGFX )
+	// The item's label is the state, so the menus are rebuilt rather than re-read.
+	UpdateMenuBar();
+#endif
 }
 
 /// Stops the current simulation and blanks out the screen.
@@ -1951,10 +2005,15 @@ void CSimulatorView::UpdateSimulatorSkin()
 	float zoomFactor = pMainWnd->CalcZoomFactor();
 	
 	// Set the client window size that will render the device skin and the Corona contents.
+	//
+	// The menu bar is drawn into the same surface Corona renders into, above the content, so the window is
+	// that much taller than what the zoom factor works out to. Zero without bgfx, where there is no bar.
+	const int menuBarHeight = GetMenuBarHeight();
+
 	clientBounds.top = 0;
 	clientBounds.left = 0;
 	clientBounds.right = (int)floor(zoomFactor * clientWidth);
-	clientBounds.bottom = (int)floor(zoomFactor * clientHeight);
+	clientBounds.bottom = (int)floor(zoomFactor * clientHeight) + menuBarHeight;
 	pMainWnd->SizeToClient(clientBounds);
 	
 	// Calculate the bounds of the Corona control.
@@ -2014,6 +2073,22 @@ void CSimulatorView::UpdateSimulatorSkin()
 		// Not showing a skin. Use the same bounds as the window's client area.
 		coronaBounds.CopyRect(&clientBounds);
 	}
+
+	// Everything above placed the device's screen. The control the screen is rendered into is the bar taller
+	// than that, because the bar is drawn into it -- so it starts that much higher up, and the screen ends up
+	// exactly where the skin says it should be. With a skin showing, the strip the bar occupies is over the
+	// device's bezel; without one it is the top of the window.
+	if (menuBarHeight > 0)
+	{
+		if (pBitmap)
+		{
+			// Shift the screen down instead of growing upward into the skin's own top edge, which the bar
+			// would otherwise be drawn over rather than above.
+			coronaBounds.OffsetRect(0, menuBarHeight);
+		}
+		coronaBounds.top -= menuBarHeight;
+	}
+
 	mCoronaContainerControl.MoveWindow(coronaBounds, FALSE);
 
     // Set size, position, and visibility of view window
@@ -2581,5 +2656,304 @@ CWnd& CSimulatorView::CCoronaControlContainer::GetCoronaControl()
 {
 	return mCoronaControl;
 }
+
+#pragma endregion
+
+#pragma region Menu Bar
+// The simulator's menu bar.
+//
+// Every platform used to grow its own -- an MFC menu resource here, an AppKit main menu on macOS, a Dear
+// ImGui bar on Linux -- so the same File menu existed three times and behaved differently in each. Under
+// bgfx none of them can reach the window any more: bgfx owns it, and a Win32 menu on the frame would be
+// painted over. So the bar is Rtt::MenuBar, drawn through the renderer's overlay hook, and what it puts on
+// itself is UI/Rtt_SimulatorMenus.h -- the same description every host uses.
+
+int CSimulatorView::GetMenuBarHeight()
+{
+#if defined( Rtt_USE_BGFX )
+	return Rtt::MenuBar::GetHeight();
+#else
+	return 0;
+#endif
+}
+
+#if defined( Rtt_USE_BGFX )
+
+void CSimulatorView::EnsureMenuBar()
+{
+	if (mMenuBar.IsInitialized() || mMenuBarFailed)
+	{
+		return;
+	}
+	if (!mRuntimeEnvironmentPointer || !mRuntimeEnvironmentPointer->GetRuntime())
+	{
+		return;
+	}
+
+	// bgfx has to exist before the bar can bake a font or compile a shader, and it does not until the
+	// runtime has built its renderer -- which is why this is here rather than in OnCreate().
+	auto& renderer = mRuntimeEnvironmentPointer->GetRuntime()->GetDisplay().GetRenderer();
+	auto bgfxRendererPointer = dynamic_cast<Rtt::BgfxRenderer*>(&renderer);
+	if (!bgfxRendererPointer)
+	{
+		// A project asked for another backend by name. Without bgfx there is nowhere to draw a bar; every
+		// command on it still has a keyboard shortcut, which this build keeps working below.
+		mMenuBarFailed = true;
+		return;
+	}
+
+	// The bar bakes its own atlas out of a TrueType file, so it needs one. Segoe UI is what the rest of the
+	// simulator's chrome is drawn in, and it is present on every Windows the simulator supports.
+	std::vector<char> fontBytes;
+	{
+		wchar_t fontPath[MAX_PATH];
+		fontPath[0] = L'\0';
+		::GetWindowsDirectoryW(fontPath, MAX_PATH);
+		::PathAppendW(fontPath, L"Fonts\\segoeui.ttf");
+
+		HANDLE fileHandle = ::CreateFileW(
+				fontPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (INVALID_HANDLE_VALUE != fileHandle)
+		{
+			LARGE_INTEGER fileSize{};
+			if (::GetFileSizeEx(fileHandle, &fileSize) && (fileSize.QuadPart > 0))
+			{
+				fontBytes.resize((size_t)fileSize.QuadPart);
+
+				DWORD bytesRead = 0;
+				if (!::ReadFile(fileHandle, &fontBytes[0], (DWORD)fontBytes.size(), &bytesRead, nullptr) ||
+				    (bytesRead != fontBytes.size()))
+				{
+					fontBytes.clear();
+				}
+			}
+			::CloseHandle(fileHandle);
+		}
+	}
+
+	// Without a bar the simulator is harder to use but still runs. Remembered rather than retried, because
+	// bringing the bar up compiles two shaders.
+	if (fontBytes.empty() || !mMenuBar.Initialize(&fontBytes[0], fontBytes.size()))
+	{
+		mMenuBarFailed = true;
+		Rtt_LogException("WARNING: the simulator's menu bar could not be created\r\n");
+		return;
+	}
+
+	mMenuBar.SetCommandHandler(&CSimulatorView::OnMenuBarCommand, this);
+	bgfxRendererPointer->SetOverlay(
+			&CSimulatorView::RenderMenuBarOverlay, &CSimulatorView::ReleaseMenuBarOverlay, this);
+
+	// The surface is taller than the device screen by exactly the bar, and this is what tells the rest of
+	// Corona so; see RenderSurfaceControl::SetOverlayHeight().
+	auto renderSurfacePointer = mRuntimeEnvironmentPointer->GetRenderSurface();
+	if (renderSurfacePointer)
+	{
+		renderSurfacePointer->SetOverlayHeight(GetMenuBarHeight());
+		renderSurfacePointer->SetMessageFilter(&CSimulatorView::OnRenderSurfaceMessage, this);
+	}
+
+	UpdateMenuBar();
+}
+
+void CSimulatorView::UpdateMenuBar()
+{
+	// Nothing to put on the bar until there is one; EnsureMenuBar() calls back here once there is.
+	if (!mMenuBar.IsInitialized())
+	{
+		return;
+	}
+
+	std::vector<Rtt::Menu> menus;
+
+	Rtt::BuildSimulatorMenus(mIsShowingInternalScreen, IsSimulationSuspended(), menus);
+
+	mMenuBar.SetMenus(menus);
+}
+
+void CSimulatorView::RenderMenuBarOverlay(void* userdata, Rtt::U16 view, Rtt::U32 width, Rtt::U32 height)
+{
+	auto viewPointer = (CSimulatorView*)userdata;
+
+	viewPointer->mMenuBar.Render(view, width, height);
+}
+
+void CSimulatorView::ReleaseMenuBarOverlay(void* userdata)
+{
+	// The menus themselves are kept: they are plain data, and the next runtime's bar wants the same ones.
+	// Only the bgfx handles go.
+	((CSimulatorView*)userdata)->mMenuBar.Finalize();
+}
+
+UINT CSimulatorView::CommandIdFor(int command)
+{
+	switch (command)
+	{
+		case Rtt::SimulatorCommand::kNewProject:			return ID_FILE_NEWPROJECT;
+		case Rtt::SimulatorCommand::kOpenProject:			return ID_FILE_OPEN;
+		case Rtt::SimulatorCommand::kOpenInEditor:			return ID_FILE_OPENINEDITOR;
+		case Rtt::SimulatorCommand::kShowProjectFiles:		return ID_FILE_SHOW_PROJECT_FILES;
+		case Rtt::SimulatorCommand::kShowProjectSandbox:	return ID_FILE_SHOWPROJECTSANDBOX;
+		case Rtt::SimulatorCommand::kClearProjectSandbox:	return ID_FILE_CLEARPROJECTSANDBOX;
+		case Rtt::SimulatorCommand::kRelaunch:				return ID_FILE_RELAUNCH;
+
+		// With nothing loaded, relaunching "the last project" is what the one relaunch command does.
+		case Rtt::SimulatorCommand::kRelaunchLastProject:	return ID_FILE_RELAUNCH;
+
+		case Rtt::SimulatorCommand::kCloseProject:			return ID_FILE_CLOSE;
+		case Rtt::SimulatorCommand::kOpenPreferences:		return ID_FILE_PREFERENCES;
+		case Rtt::SimulatorCommand::kQuit:					return ID_APP_EXIT;
+
+		case Rtt::SimulatorCommand::kBuildAndroid:			return ID_BUILD_FOR_ANDROID;
+		case Rtt::SimulatorCommand::kBuildHTML5:			return ID_BUILD_FOR_WEB;
+		case Rtt::SimulatorCommand::kBuildLinux:			return ID_BUILD_FOR_LINUX;
+
+		case Rtt::SimulatorCommand::kRotateLeft:			return ID_VIEW_ROTATELEFT;
+		case Rtt::SimulatorCommand::kRotateRight:			return ID_VIEW_ROTATERIGHT;
+		case Rtt::SimulatorCommand::kShake:					return ID_VIEW_SHAKE;
+		case Rtt::SimulatorCommand::kSuspendResume:			return ID_VIEW_SUSPEND;
+
+		case Rtt::SimulatorCommand::kSetFocusConsole:		return ID_VIEW_CONSOLE;
+		case Rtt::SimulatorCommand::kViewAs:				return ID_VIEW_VIEWAS;
+
+		case Rtt::SimulatorCommand::kOpenDocumentation:		return ID_HELP;
+		case Rtt::SimulatorCommand::kOpenSampleProjects:	return ID_FILE_OPEN_SAMPLE_PROJECT;
+		case Rtt::SimulatorCommand::kAbout:					return ID_APP_ABOUT;
+
+		// Zoom belongs to the frame window, which owns the zoom level; the ids are its, not this view's.
+		case Rtt::SimulatorCommand::kZoomIn:				return ID_WINDOW_ZOOMIN;
+		case Rtt::SimulatorCommand::kZoomOut:				return ID_WINDOW_ZOOMOUT;
+
+		default:											return 0;
+	}
+}
+
+void CSimulatorView::OnMenuBarCommand(void* userdata, int command)
+{
+	auto viewPointer = (CSimulatorView*)userdata;
+
+	UINT commandId = CommandIdFor(command);
+	if (0 == commandId)
+	{
+		return;
+	}
+
+	// Posted rather than sent, and to the frame rather than to this view: the commands were already routed
+	// that way when they came from a Win32 menu, so a menu item and the accelerator that does the same thing
+	// end up in the same place. Posting also lets the click that chose the item finish first -- some of these
+	// tear down the runtime, and with it the bar that is still handling the click.
+	auto frameWindowPointer = viewPointer->GetParentFrame();
+	if (frameWindowPointer)
+	{
+		frameWindowPointer->PostMessage(WM_COMMAND, MAKEWPARAM(commandId, 0), 0);
+	}
+}
+
+// Which of the keys an accelerator can be built on this virtual-key code is, if any.
+static int SimulatorKeyForVirtualKey(WPARAM virtualKeyCode)
+{
+	switch (virtualKeyCode)
+	{
+		case 'B':				return Rtt::SimulatorKey::kB;
+		case 'N':				return Rtt::SimulatorKey::kN;
+		case 'O':				return Rtt::SimulatorKey::kO;
+		case 'Q':				return Rtt::SimulatorKey::kQ;
+		case 'R':				return Rtt::SimulatorKey::kR;
+		case 'W':				return Rtt::SimulatorKey::kW;
+
+		case VK_LEFT:			return Rtt::SimulatorKey::kLeft;
+		case VK_RIGHT:			return Rtt::SimulatorKey::kRight;
+		case VK_UP:				return Rtt::SimulatorKey::kUp;
+		case VK_DOWN:			return Rtt::SimulatorKey::kDown;
+
+		// Zoom is spelled "Ctrl+Plus" and "Ctrl+Minus" on the menu. The plus is whatever key carries it
+		// unshifted, which is the OEM '=' on a US layout, and the keypad pair for anyone using it.
+		case VK_OEM_PLUS:
+		case VK_ADD:			return Rtt::SimulatorKey::kPlus;
+
+		case VK_OEM_MINUS:
+		case VK_SUBTRACT:		return Rtt::SimulatorKey::kMinus;
+
+		default:				return Rtt::SimulatorKey::kNone;
+	}
+}
+
+bool CSimulatorView::OnRenderSurfaceMessage(void* userdata, UINT messageId, WPARAM wParam, LPARAM lParam)
+{
+	auto viewPointer = (CSimulatorView*)userdata;
+	auto& menuBar = viewPointer->mMenuBar;
+
+	if (!menuBar.IsInitialized())
+	{
+		return false;
+	}
+
+	switch (messageId)
+	{
+		case WM_MOUSEMOVE:
+			return menuBar.OnMouseMove(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+
+		case WM_LBUTTONDOWN:
+		case WM_LBUTTONDBLCLK:
+			return menuBar.OnMouseDown(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+
+		case WM_LBUTTONUP:
+			return menuBar.OnMouseUp(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+
+		case WM_MOUSEWHEEL:
+			// Nothing on the bar scrolls, but a wheel event while a menu is open should not reach the content
+			// behind it either.
+			return menuBar.IsOpen();
+
+		case WM_KILLFOCUS:
+			// A menu left open when the window loses focus would still be showing when it comes back, over
+			// content that has moved on. Closed, but not consumed: the surface has its own use for this.
+			menuBar.Close();
+			return false;
+
+		case WM_KEYDOWN:
+		{
+			// Autorepeat would fire a command per repeat, which for something like Relaunch is not what
+			// holding the key down means.
+			if (lParam & 0x40000000)
+			{
+				return false;
+			}
+
+			if (VK_ESCAPE == wParam)
+			{
+				if (menuBar.IsOpen())
+				{
+					menuBar.Close();
+					return true;
+				}
+				return false;
+			}
+
+			Rtt::U32 modifiers = Rtt::SimulatorModifier::kNone;
+
+			// Control is the primary modifier everywhere but macOS, and this host is not macOS.
+			if (::GetKeyState(VK_CONTROL) & 0x8000)	modifiers |= Rtt::SimulatorModifier::kPrimary;
+			if (::GetKeyState(VK_SHIFT) & 0x8000)	modifiers |= Rtt::SimulatorModifier::kShift;
+			if (::GetKeyState(VK_MENU) & 0x8000)	modifiers |= Rtt::SimulatorModifier::kAlt;
+
+			int command = Rtt::CommandForAccelerator(
+					viewPointer->mIsShowingInternalScreen, SimulatorKeyForVirtualKey(wParam), modifiers);
+			if (Rtt::SimulatorCommand::kNone == command)
+			{
+				return false;
+			}
+
+			menuBar.Close();
+			OnMenuBarCommand(viewPointer, command);
+
+			return true;
+		}
+	}
+
+	return false;
+}
+
+#endif // Rtt_USE_BGFX
 
 #pragma endregion

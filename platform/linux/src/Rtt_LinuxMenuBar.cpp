@@ -14,118 +14,39 @@
 
 namespace Rtt
 {
-	// A command item, spelled out rather than assembled through a builder:
-	// what a menu bar is is a list, and the list reads better as one.
-	static MenuItem Command(const char* label, int command, const char* shortcut = "")
+	// Which of the keys an accelerator can be built on this is, if any.
+	//
+	// Zoom is spelled "Plus" and "Minus" on the menu; the plus is whatever key
+	// carries it unshifted, which is '=' on most layouts, and the keypad pair
+	// for anyone using it.
+	static int KeyForKeysym(SDL_Keycode sym)
 	{
-		MenuItem item;
-
-		item.fLabel = label;
-		item.fShortcut = shortcut;
-		item.fCommand = command;
-
-		return item;
-	}
-
-	static MenuItem Separator()
-	{
-		MenuItem item;
-
-		item.fSeparator = true;
-
-		return item;
-	}
-
-	void BuildSimulatorMenus(bool isHomeScreen, std::vector<Menu>& menus)
-	{
-		menus.clear();
-
-		Menu file;
-		Menu help;
-
-		file.fTitle = "File";
-		help.fTitle = "Help";
-
-		help.fItems.push_back(Command("Online Documentation...", OnOpenDocumentation));
-		help.fItems.push_back(Command("Sample projects...", OnOpenSampleProjects));
-		help.fItems.push_back(Separator());
-		help.fItems.push_back(Command("About Simulator...", OnAbout));
-
-		if (isHomeScreen)
+		switch (sym)
 		{
-			// Nothing is loaded, so everything about a project is missing:
-			// there is no sandbox to show, nothing to relaunch but the last
-			// one, and nothing to build.
-			file.fItems.push_back(Command("New Project...", OnNewProject, "Ctrl+N"));
-			file.fItems.push_back(Command("Open Project...", OnOpenProject, "Ctrl+O"));
-			file.fItems.push_back(Separator());
-			file.fItems.push_back(Command("Relaunch Last Project", OnRelaunchLastProject, "Ctrl+R"));
-			file.fItems.push_back(Separator());
-			file.fItems.push_back(Command("Preferences...", OnOpenPreferences));
-			file.fItems.push_back(Separator());
-			file.fItems.push_back(Command("Exit", SDL_QUIT, "Ctrl+Q"));
+		case SDLK_b: return SimulatorKey::kB;
+		case SDLK_n: return SimulatorKey::kN;
+		case SDLK_o: return SimulatorKey::kO;
+		case SDLK_q: return SimulatorKey::kQ;
+		case SDLK_r: return SimulatorKey::kR;
+		case SDLK_w: return SimulatorKey::kW;
 
-			menus.push_back(file);
-			menus.push_back(help);
+		case SDLK_LEFT: return SimulatorKey::kLeft;
+		case SDLK_RIGHT: return SimulatorKey::kRight;
+		case SDLK_UP: return SimulatorKey::kUp;
+		case SDLK_DOWN: return SimulatorKey::kDown;
 
-			return;
+		case SDLK_EQUALS:
+		case SDLK_PLUS:
+		case SDLK_KP_PLUS:
+			return SimulatorKey::kPlus;
+
+		case SDLK_MINUS:
+		case SDLK_KP_MINUS:
+			return SimulatorKey::kMinus;
+
+		default:
+			return SimulatorKey::kNone;
 		}
-
-		MenuItem build;
-
-		build.fLabel = "Build";
-		build.fItems.push_back(Command("Android...", OnBuildAndroid, "Ctrl+B"));
-		build.fItems.push_back(Command("HTML5...", OnBuildHTML5, "Ctrl+Alt+B"));
-		build.fItems.push_back(Command("Linux...", OnBuildLinux, "Ctrl+Shift+Alt+B"));
-
-		file.fItems.push_back(Command("New Project...", OnNewProject, "Ctrl+N"));
-		file.fItems.push_back(Command("Open Project...", OnOpenProject, "Ctrl+O"));
-		file.fItems.push_back(Separator());
-		file.fItems.push_back(build);
-		file.fItems.push_back(Command("Open in Editor", OnOpenInEditor, "Ctrl+Shift+O"));
-		file.fItems.push_back(Command("Show Project Files", OnShowProjectFiles));
-		file.fItems.push_back(Command("Show Project Sandbox", OnShowProjectSandbox));
-		file.fItems.push_back(Separator());
-		file.fItems.push_back(Command("Clear Project Sandbox", OnClearProjectSandbox));
-		file.fItems.push_back(Separator());
-		file.fItems.push_back(Command("Relaunch", OnRelaunch, "Ctrl+R"));
-		file.fItems.push_back(Command("Close Project", OnCloseProject, "Ctrl+W"));
-		file.fItems.push_back(Command("Preferences...", OnOpenPreferences));
-		file.fItems.push_back(Separator());
-		file.fItems.push_back(Command("Exit", SDL_QUIT, "Ctrl+Q"));
-
-		Menu hardware;
-
-		hardware.fTitle = "Hardware";
-		hardware.fItems.push_back(Command("Rotate Left", OnRotateLeft, "Ctrl+Left"));
-		hardware.fItems.push_back(Command("Rotate Right", OnRotateRight, "Ctrl+Right"));
-		hardware.fItems.push_back(Command("Shake", OnShake, "Ctrl+Up"));
-		hardware.fItems.push_back(Separator());
-		hardware.fItems.push_back(Command("Back", OnCloseProject, "Alt+Left"));
-		hardware.fItems.push_back(Separator());
-
-		// The one item whose label depends on state. The menus are rebuilt
-		// whenever it changes, so this is read once, here, rather than being a
-		// callback the bar has to consult while drawing.
-		hardware.fItems.push_back(Command(
-			!app->IsSuspended() ? "Suspend" : "Resume",
-			OnSuspendResume, "Ctrl+Down"));
-
-		Menu view;
-
-		view.fTitle = "View";
-		view.fItems.push_back(Command("Zoom In", OnZoomIn, "Ctrl+Plus"));
-		view.fItems.push_back(Command("Zoom Out", OnZoomOut, "Ctrl+Minus"));
-		view.fItems.push_back(Separator());
-		view.fItems.push_back(Command("Welcome screen", OnCloseProject));
-		view.fItems.push_back(Command("Console", OnSetFocusConsole));
-		view.fItems.push_back(Separator());
-		view.fItems.push_back(Command("View As...", OnViewAs));
-
-		menus.push_back(file);
-		menus.push_back(hardware);
-		menus.push_back(view);
-		menus.push_back(help);
 	}
 
 	int CommandForKeyEvent(const SDL_KeyboardEvent& key, bool isHomeScreen)
@@ -134,94 +55,58 @@ namespace Rtt
 		// Relaunch is not what holding the key down means.
 		if (key.repeat != 0)
 		{
-			return -1;
+			return SimulatorCommand::kNone;
 		}
 
 		const SDL_Keymod mod = SDL_Keymod(key.keysym.mod);
 
-		const bool ctrl = 0 != (mod & KMOD_CTRL);
-		const bool shift = 0 != (mod & KMOD_SHIFT);
-		const bool alt = 0 != (mod & KMOD_ALT);
+		U32 modifiers = SimulatorModifier::kNone;
 
-		if (isHomeScreen)
+		// Control is the primary modifier everywhere but macOS, and this host
+		// is not macOS.
+		if (mod & KMOD_CTRL) modifiers |= SimulatorModifier::kPrimary;
+		if (mod & KMOD_SHIFT) modifiers |= SimulatorModifier::kShift;
+		if (mod & KMOD_ALT) modifiers |= SimulatorModifier::kAlt;
+
+		return CommandForAccelerator(isHomeScreen, KeyForKeysym(key.keysym.sym), modifiers);
+	}
+
+	int SdlEventForCommand(int command)
+	{
+		switch (command)
 		{
-			if (!ctrl || shift || alt)
-			{
-				return -1;
-			}
+		case SimulatorCommand::kNewProject: return OnNewProject;
+		case SimulatorCommand::kOpenProject: return OnOpenProject;
+		case SimulatorCommand::kOpenInEditor: return OnOpenInEditor;
+		case SimulatorCommand::kShowProjectFiles: return OnShowProjectFiles;
+		case SimulatorCommand::kShowProjectSandbox: return OnShowProjectSandbox;
+		case SimulatorCommand::kClearProjectSandbox: return OnClearProjectSandbox;
+		case SimulatorCommand::kRelaunch: return OnRelaunch;
+		case SimulatorCommand::kRelaunchLastProject: return OnRelaunchLastProject;
+		case SimulatorCommand::kCloseProject: return OnCloseProject;
+		case SimulatorCommand::kOpenPreferences: return OnOpenPreferences;
+		case SimulatorCommand::kQuit: return SDL_QUIT;
 
-			switch (key.keysym.sym)
-			{
-			case SDLK_n: return OnNewProject;
-			case SDLK_o: return OnOpenProject;
-			case SDLK_r: return OnRelaunchLastProject;
-			case SDLK_q: return SDL_QUIT;
-			default: return -1;
-			}
-		}
+		case SimulatorCommand::kBuildAndroid: return OnBuildAndroid;
+		case SimulatorCommand::kBuildHTML5: return OnBuildHTML5;
+		case SimulatorCommand::kBuildLinux: return OnBuildLinux;
 
-		// Back, the one chord that is not Ctrl-based.
-		if (alt && !ctrl && !shift && SDLK_LEFT == key.keysym.sym)
-		{
-			return OnCloseProject;
-		}
+		case SimulatorCommand::kRotateLeft: return OnRotateLeft;
+		case SimulatorCommand::kRotateRight: return OnRotateRight;
+		case SimulatorCommand::kShake: return OnShake;
 
-		if (!ctrl)
-		{
-			return -1;
-		}
+		case SimulatorCommand::kZoomIn: return OnZoomIn;
+		case SimulatorCommand::kZoomOut: return OnZoomOut;
+		case SimulatorCommand::kSetFocusConsole: return OnSetFocusConsole;
+		case SimulatorCommand::kViewAs: return OnViewAs;
 
-		// The three build targets differ only in their modifiers, so they are
-		// tested together rather than falling through the table below.
-		if (SDLK_b == key.keysym.sym)
-		{
-			if (shift && alt) return OnBuildLinux;
-			if (!shift && alt) return OnBuildHTML5;
-			if (!shift && !alt) return OnBuildAndroid;
+		case SimulatorCommand::kOpenDocumentation: return OnOpenDocumentation;
+		case SimulatorCommand::kOpenSampleProjects: return OnOpenSampleProjects;
+		case SimulatorCommand::kAbout: return OnAbout;
 
-			return -1;
-		}
-
-		if (shift && !alt && SDLK_o == key.keysym.sym)
-		{
-			return OnOpenInEditor;
-		}
-
-		if (shift || alt)
-		{
-			return -1;
-		}
-
-		switch (key.keysym.sym)
-		{
-		case SDLK_n: return OnNewProject;
-		case SDLK_o: return OnOpenProject;
-		case SDLK_r: return OnRelaunch;
-		case SDLK_w: return OnCloseProject;
-		case SDLK_q: return SDL_QUIT;
-
-		case SDLK_DOWN: return OnSuspendResume;
-
-		// Promised by the Hardware menu's labels, though the Dear ImGui bar
-		// this replaces never actually wired them up.
-		case SDLK_LEFT: return OnRotateLeft;
-		case SDLK_RIGHT: return OnRotateRight;
-		case SDLK_UP: return OnShake;
-
-		// Zoom, spelled "Ctrl+Plus" and "Ctrl+Minus" on the menu. The plus is
-		// whatever key carries it unshifted, which is '=' on most layouts, and
-		// the keypad pair for anyone using it.
-		case SDLK_EQUALS:
-		case SDLK_PLUS:
-		case SDLK_KP_PLUS:
-			return OnZoomIn;
-
-		case SDLK_MINUS:
-		case SDLK_KP_MINUS:
-			return OnZoomOut;
-
-		default:
-			return -1;
+		// Suspend/Resume is not pushed: the label on the item is the state, so
+		// the app flips it and rebuilds the menus itself.
+		default: return 0;
 		}
 	}
 }

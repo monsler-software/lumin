@@ -662,7 +662,7 @@ namespace Rtt
 	{
 		SolarApp* self = static_cast<SolarApp*>(userdata);
 
-		if (sdl::OnSuspendResume == command)
+		if (SimulatorCommand::kSuspendResume == command)
 		{
 			if (self->IsSuspended())
 			{
@@ -683,7 +683,12 @@ namespace Rtt
 		// Everything else goes back through the event queue, which is where
 		// the commands were already handled from: a menu item and the dialog
 		// button that does the same thing end up in the same place.
-		PushEvent(command);
+		const int evt = SdlEventForCommand(command);
+
+		if (evt != 0)
+		{
+			PushEvent(evt);
+		}
 	}
 
 	bool SolarApp::ProcessMenuBarEvent(const SDL_Event& e)
@@ -733,7 +738,7 @@ namespace Rtt
 
 			const int command = CommandForKeyEvent(e.key, IsHomeScreen(GetAppName()));
 
-			if (command >= 0)
+			if (command != SimulatorCommand::kNone)
 			{
 				fMenuBar.Close();
 

@@ -91,6 +91,28 @@ Shader::~Shader()
         observer->QueueRelease( fTexture );
         observer->QueueRelease( fFBO );
     }
+    else
+    {
+        // No paint to hand them to, which is the ordinary case for the shader
+        // a filter clones for itself: SetTextureBounds gave it a render target
+        // and a framebuffer, and without this nothing ever frees either. That
+        // is a slow leak of GPU memory on a backend that allocates handles on
+        // demand, and a hard stop on one that does not -- bgfx fixes its handle
+        // pools at compile time, so a scene that churns filtered objects runs
+        // out and stops drawing them.
+        //
+        // Deleting rather than queueing is what is left without an observer to
+        // queue against. It is safe at this point for the same reason the queue
+        // is: destroying a CPUResource only queues its GPU resource for
+        // destruction (see CPUResource::~CPUResource), which the renderer
+        // carries out between frames.
+        Rtt_DELETE( fFBO );
+        Rtt_DELETE( fTexture );
+    }
+
+    fFBO = NULL;
+    fTexture = NULL;
+
     Rtt_DELETE( fRenderData );
     Rtt_DELETE( fData );
 }

@@ -46,6 +46,10 @@ struct BgfxDrawState
 
 	void Reset();
 
+	// Everything remembered that a display object owns rather than the
+	// renderer. See the note on the definition.
+	void ReleaseObjectBindings();
+
 	// View 0 is the window; render-to-texture takes the ids above it.
 	bgfx::ViewId fCurrentView;
 

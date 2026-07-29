@@ -14,6 +14,7 @@
 #include "Rtt_AppleInputDeviceManager.h"
 #include "Rtt_AppleInputHIDDeviceListener.h"
 #include "Rtt_AppleInputMFIDeviceListener.h"
+#include "Renderer/Rtt_BgfxSurfaceParams.h"
 
 // ----------------------------------------------------------------------------
 
@@ -101,6 +102,12 @@ class MacSimulator : public PlatformSimulator
 		NSString* fDeviceSkinIdentifier; // To save the scale factor for the current skin, we need to know which skin we are on.
         NSString* fDeviceName;
 		MacViewCallback *fViewCallback;
+
+#if defined( Rtt_USE_BGFX )
+		// What bgfx is given to reach the simulator's view. Held here rather than passed by value because
+		// Runtime::SetBackend keeps the pointer, and the runtime outlives the call that sets it.
+		BgfxSurfaceParams fBgfxSurfaceParams;
+#endif
 		AppleInputHIDDeviceListener *fMacHidDeviceListener;
 		AppleInputMFiDeviceListener	*fMacMFIListener;
 };

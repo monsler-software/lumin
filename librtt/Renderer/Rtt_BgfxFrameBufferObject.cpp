@@ -102,6 +102,17 @@ BgfxFrameBufferObject::Create( CPUResource* resource )
 		return;
 	}
 
+	// A previous attempt that got as far as the depth attachment and then failed
+	// to build the framebuffer itself, which is what running out of framebuffer
+	// handles looks like. Corona retries every time the target is bound, so
+	// without this each retry would strand another depth texture -- and once
+	// enough of those pile up, texture handles run out as well.
+	if ( bgfx::isValid( fDepthStencil ) )
+	{
+		bgfx::destroy( fDepthStencil );
+		fDepthStencil = BGFX_INVALID_HANDLE;
+	}
+
 	// bgfx only accepts an attachment that was created as a render target, and
 	// Corona created this one as an ordinary texture.
 	bgfxTexture->AddFlags( BGFX_TEXTURE_RT );

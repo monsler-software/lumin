@@ -31,6 +31,16 @@
 		A4B66A7B176A77730077B2BF /* Rtt_GLProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A4B66A4F176A77730077B2BF /* Rtt_GLProgram.cpp */; };
 		A4B66A7C176A77730077B2BF /* Rtt_GLProgram.h in Headers */ = {isa = PBXBuildFile; fileRef = A4B66A50176A77730077B2BF /* Rtt_GLProgram.h */; };
 		A4B66A7D176A77730077B2BF /* Rtt_GLRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A4B66A51176A77730077B2BF /* Rtt_GLRenderer.cpp */; };
+		105302004C554D494E424758 /* Rtt_BgfxCommandBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301004C554D494E424758 /* Rtt_BgfxCommandBuffer.cpp */; };
+		105302014C554D494E424758 /* Rtt_BgfxDrawState.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301014C554D494E424758 /* Rtt_BgfxDrawState.cpp */; };
+		105302024C554D494E424758 /* Rtt_BgfxFrameBufferObject.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301024C554D494E424758 /* Rtt_BgfxFrameBufferObject.cpp */; };
+		105302034C554D494E424758 /* Rtt_BgfxGeometry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301034C554D494E424758 /* Rtt_BgfxGeometry.cpp */; };
+		105302044C554D494E424758 /* Rtt_BgfxProgram.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301044C554D494E424758 /* Rtt_BgfxProgram.cpp */; };
+		105302054C554D494E424758 /* Rtt_BgfxRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301054C554D494E424758 /* Rtt_BgfxRenderer.cpp */; };
+		105302064C554D494E424758 /* Rtt_BgfxTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301064C554D494E424758 /* Rtt_BgfxTexture.cpp */; };
+		105302074C554D494E424758 /* Rtt_BgfxUIDraw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301074C554D494E424758 /* Rtt_BgfxUIDraw.cpp */; };
+		105302084C554D494E424758 /* Rtt_MenuBar.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301084C554D494E424758 /* Rtt_MenuBar.cpp */; };
+		105302094C554D494E424758 /* Rtt_SimulatorMenus.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 105301094C554D494E424758 /* Rtt_SimulatorMenus.cpp */; };
 		A4B66A7E176A77730077B2BF /* Rtt_GLRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = A4B66A52176A77730077B2BF /* Rtt_GLRenderer.h */; };
 		A4B66A7F176A77730077B2BF /* Rtt_GLTexture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A4B66A53176A77730077B2BF /* Rtt_GLTexture.cpp */; };
 		A4B66A80176A77730077B2BF /* Rtt_GLTexture.h in Headers */ = {isa = PBXBuildFile; fileRef = A4B66A54176A77730077B2BF /* Rtt_GLTexture.h */; };
@@ -88,6 +98,16 @@
 		A4B66A4F176A77730077B2BF /* Rtt_GLProgram.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_GLProgram.cpp; path = ../Rtt_GLProgram.cpp; sourceTree = "<group>"; };
 		A4B66A50176A77730077B2BF /* Rtt_GLProgram.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Rtt_GLProgram.h; path = ../Rtt_GLProgram.h; sourceTree = "<group>"; };
 		A4B66A51176A77730077B2BF /* Rtt_GLRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_GLRenderer.cpp; path = ../Rtt_GLRenderer.cpp; sourceTree = "<group>"; };
+		105301004C554D494E424758 /* Rtt_BgfxCommandBuffer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_BgfxCommandBuffer.cpp; path = ../Rtt_BgfxCommandBuffer.cpp; sourceTree = "<group>"; };
+		105301014C554D494E424758 /* Rtt_BgfxDrawState.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_BgfxDrawState.cpp; path = ../Rtt_BgfxDrawState.cpp; sourceTree = "<group>"; };
+		105301024C554D494E424758 /* Rtt_BgfxFrameBufferObject.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_BgfxFrameBufferObject.cpp; path = ../Rtt_BgfxFrameBufferObject.cpp; sourceTree = "<group>"; };
+		105301034C554D494E424758 /* Rtt_BgfxGeometry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_BgfxGeometry.cpp; path = ../Rtt_BgfxGeometry.cpp; sourceTree = "<group>"; };
+		105301044C554D494E424758 /* Rtt_BgfxProgram.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_BgfxProgram.cpp; path = ../Rtt_BgfxProgram.cpp; sourceTree = "<group>"; };
+		105301054C554D494E424758 /* Rtt_BgfxRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_BgfxRenderer.cpp; path = ../Rtt_BgfxRenderer.cpp; sourceTree = "<group>"; };
+		105301064C554D494E424758 /* Rtt_BgfxTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_BgfxTexture.cpp; path = ../Rtt_BgfxTexture.cpp; sourceTree = "<group>"; };
+		105301074C554D494E424758 /* Rtt_BgfxUIDraw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_BgfxUIDraw.cpp; path = ../../UI/Rtt_BgfxUIDraw.cpp; sourceTree = "<group>"; };
+		105301084C554D494E424758 /* Rtt_MenuBar.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_MenuBar.cpp; path = ../../UI/Rtt_MenuBar.cpp; sourceTree = "<group>"; };
+		105301094C554D494E424758 /* Rtt_SimulatorMenus.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_SimulatorMenus.cpp; path = ../../UI/Rtt_SimulatorMenus.cpp; sourceTree = "<group>"; };
 		A4B66A52176A77730077B2BF /* Rtt_GLRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Rtt_GLRenderer.h; path = ../Rtt_GLRenderer.h; sourceTree = "<group>"; };
 		A4B66A53176A77730077B2BF /* Rtt_GLTexture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = Rtt_GLTexture.cpp; path = ../Rtt_GLTexture.cpp; sourceTree = "<group>"; };
 		A4B66A54176A77730077B2BF /* Rtt_GLTexture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = Rtt_GLTexture.h; path = ../Rtt_GLTexture.h; sourceTree = "<group>"; };
@@ -173,6 +193,16 @@
 				A4B66A4F176A77730077B2BF /* Rtt_GLProgram.cpp */,
 				A4B66A50176A77730077B2BF /* Rtt_GLProgram.h */,
 				A4B66A51176A77730077B2BF /* Rtt_GLRenderer.cpp */,
+				105301004C554D494E424758 /* Rtt_BgfxCommandBuffer.cpp */,
+				105301014C554D494E424758 /* Rtt_BgfxDrawState.cpp */,
+				105301024C554D494E424758 /* Rtt_BgfxFrameBufferObject.cpp */,
+				105301034C554D494E424758 /* Rtt_BgfxGeometry.cpp */,
+				105301044C554D494E424758 /* Rtt_BgfxProgram.cpp */,
+				105301054C554D494E424758 /* Rtt_BgfxRenderer.cpp */,
+				105301064C554D494E424758 /* Rtt_BgfxTexture.cpp */,
+				105301074C554D494E424758 /* Rtt_BgfxUIDraw.cpp */,
+				105301084C554D494E424758 /* Rtt_MenuBar.cpp */,
+				105301094C554D494E424758 /* Rtt_SimulatorMenus.cpp */,
 				A4B66A52176A77730077B2BF /* Rtt_GLRenderer.h */,
 				A4B66A53176A77730077B2BF /* Rtt_GLTexture.cpp */,
 				A4B66A54176A77730077B2BF /* Rtt_GLTexture.h */,
@@ -305,6 +335,16 @@
 				A4B66A79176A77730077B2BF /* Rtt_GLGeometry.cpp in Sources */,
 				A4B66A7B176A77730077B2BF /* Rtt_GLProgram.cpp in Sources */,
 				A4B66A7D176A77730077B2BF /* Rtt_GLRenderer.cpp in Sources */,
+				105302004C554D494E424758 /* Rtt_BgfxCommandBuffer.cpp in Sources */,
+				105302014C554D494E424758 /* Rtt_BgfxDrawState.cpp in Sources */,
+				105302024C554D494E424758 /* Rtt_BgfxFrameBufferObject.cpp in Sources */,
+				105302034C554D494E424758 /* Rtt_BgfxGeometry.cpp in Sources */,
+				105302044C554D494E424758 /* Rtt_BgfxProgram.cpp in Sources */,
+				105302054C554D494E424758 /* Rtt_BgfxRenderer.cpp in Sources */,
+				105302064C554D494E424758 /* Rtt_BgfxTexture.cpp in Sources */,
+				105302074C554D494E424758 /* Rtt_BgfxUIDraw.cpp in Sources */,
+				105302084C554D494E424758 /* Rtt_MenuBar.cpp in Sources */,
+				105302094C554D494E424758 /* Rtt_SimulatorMenus.cpp in Sources */,
 				A4B66A7F176A77730077B2BF /* Rtt_GLTexture.cpp in Sources */,
 				AAF34A7229F9CA6C00076706 /* Rtt_FormatExtensionList.cpp in Sources */,
 				A4B66A81176A77730077B2BF /* Rtt_GPUResource.cpp in Sources */,
@@ -354,6 +394,7 @@
 					Rtt_MAC_ENV,
 					Rtt_DEBUG,
 					LUA_USE_OBJC_EXCEPTIONS,
+					"$(LUMIN_BGFX_DEFINES)",
 					"$(inherited)",
 				);
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
@@ -364,11 +405,22 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = ../..;
+				/* The bgfx backend, off by default.
+				   Xcode cannot include a file conditionally, so the bgfx sources are always in the target and
+				   excluded from the build instead. Building with bgfx means clearing that exclusion and pointing
+				   the settings below at the libraries cmake/lumin-bgfx produced:
+				     cmake -S cmake/lumin-bgfx -B build-bgfx-libs -DCMAKE_BUILD_TYPE=Release
+				     cmake --build build-bgfx-libs
+				     xcodebuild ... LUMIN_BGFX_EXCLUDED_SOURCES="" LUMIN_BGFX_DEFINES=Rtt_USE_BGFX */
+				LUMIN_BGFX_EXCLUDED_SOURCES = "Rtt_Bgfx*.cpp Rtt_MenuBar.cpp";
+				LUMIN_BGFX_DEFINES = "";
+				LUMIN_BGFX_ROOT = ../../../external/bgfx;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(LUMIN_BGFX_EXCLUDED_SOURCES)";
 				MACOSX_DEPLOYMENT_TARGET = "$(S2D_MIN_VER_MACOS:default=10.13)";
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
-				USER_HEADER_SEARCH_PATHS = ../..;
+				USER_HEADER_SEARCH_PATHS = "../.. $(LUMIN_BGFX_ROOT)/bgfx/include $(LUMIN_BGFX_ROOT)/bx/include $(LUMIN_BGFX_ROOT)/bimg/include $(LUMIN_BGFX_ROOT)/bgfx/3rdparty/stb";
 			};
 			name = Debug;
 		};
@@ -397,6 +449,7 @@
 					Rtt_MAC_ENV,
 					NDEBUG,
 					LUA_USE_OBJC_EXCEPTIONS,
+					"$(LUMIN_BGFX_DEFINES)",
 				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
@@ -405,10 +458,21 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = ../..;
+				/* The bgfx backend, off by default.
+				   Xcode cannot include a file conditionally, so the bgfx sources are always in the target and
+				   excluded from the build instead. Building with bgfx means clearing that exclusion and pointing
+				   the settings below at the libraries cmake/lumin-bgfx produced:
+				     cmake -S cmake/lumin-bgfx -B build-bgfx-libs -DCMAKE_BUILD_TYPE=Release
+				     cmake --build build-bgfx-libs
+				     xcodebuild ... LUMIN_BGFX_EXCLUDED_SOURCES="" LUMIN_BGFX_DEFINES=Rtt_USE_BGFX */
+				LUMIN_BGFX_EXCLUDED_SOURCES = "Rtt_Bgfx*.cpp Rtt_MenuBar.cpp";
+				LUMIN_BGFX_DEFINES = "";
+				LUMIN_BGFX_ROOT = ../../../external/bgfx;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(LUMIN_BGFX_EXCLUDED_SOURCES)";
 				MACOSX_DEPLOYMENT_TARGET = "$(S2D_MIN_VER_MACOS:default=10.13)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
-				USER_HEADER_SEARCH_PATHS = ../..;
+				USER_HEADER_SEARCH_PATHS = "../.. $(LUMIN_BGFX_ROOT)/bgfx/include $(LUMIN_BGFX_ROOT)/bx/include $(LUMIN_BGFX_ROOT)/bimg/include $(LUMIN_BGFX_ROOT)/bgfx/3rdparty/stb";
 			};
 			name = Release;
 		};
