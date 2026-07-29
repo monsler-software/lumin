@@ -12,12 +12,43 @@
 #include "Rtt_LinuxUtils.h"
 #include "Rtt_LinuxCEF.h"
 
+#include <cstdlib>
+
+#ifdef Rtt_USE_BGFX
+	#include "Renderer/Rtt_BgfxSurfaceParams.h"
+#endif
+
 using namespace std;
 
 smart_ptr<Rtt::SolarApp> app;
 
+// Everything the normal end of main() does, in the same order. Lua's os.exit()
+// calls exit() from inside Run(), which never comes back here, so without this
+// the app would be torn down by the static destructor of `app` instead -- and by
+// then the graphics backend's own statics may already be gone, which is a pure
+// virtual call or a segfault rather than a shutdown. Registered from main(), so
+// it runs before the destructor of anything constructed at static-init time,
+// `app` included.
+static void ShutDownApp()
+{
+	if (app.get() != NULL)
+	{
+		Rtt::FinalizeCEF();
+		app = NULL;
+	}
+}
+
 int main(int argc, char* argv[])
 {
+	// Before the atexit() below, and for its sake: the graphics backend has
+	// statics of its own that the handler ends up freeing through, and they only
+	// outlive it if they were constructed first.
+#ifdef Rtt_USE_BGFX
+	Rtt::BgfxExports::ClaimStatics();
+#endif
+
+	atexit(ShutDownApp);
+
 	Rtt::InitCEF(argc, argv);
 
 	string resourcesDir = GetStartupPath(NULL);
@@ -69,8 +100,7 @@ int main(int argc, char* argv[])
 		app->Run();
 	}
 
-	Rtt::FinalizeCEF();
-	app = NULL;
+	ShutDownApp();
 
 	return 0;
 }

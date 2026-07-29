@@ -842,6 +842,11 @@ BgfxProgram::Build( Program& program, Program::Version version, VersionData& dat
 
 	if ( !bgfx::isValid( vertexShader ) || !bgfx::isValid( fragmentShader ) )
 	{
+		// The shaders compiled, so this is the renderer's own shader pool running
+		// out (BGFX_CONFIG_MAX_SHADERS in cmake/bgfx.cmake). Worth saying: what
+		// is seen otherwise is an effect that silently draws nothing.
+		Rtt_LogException( "ERROR: the renderer cannot hold any more shaders, so this effect will not draw\n" );
+
 		// One of the two may well have been created. No program will own it, so
 		// nothing else would ever destroy it.
 		if ( bgfx::isValid( vertexShader ) )
@@ -860,7 +865,19 @@ BgfxProgram::Build( Program& program, Program::Version version, VersionData& dat
 	// true: bgfx destroys the shaders with the program.
 	data.fProgram = bgfx::createProgram( vertexShader, fragmentShader, true );
 
-	return bgfx::isValid( data.fProgram );
+	if ( !bgfx::isValid( data.fProgram ) )
+	{
+		// Same again for the program pool (BGFX_CONFIG_MAX_PROGRAMS). The shaders
+		// are not destroyed with a program that was never created.
+		Rtt_LogException( "ERROR: the renderer cannot hold any more shader programs, so this effect will not draw\n" );
+
+		bgfx::destroy( vertexShader );
+		bgfx::destroy( fragmentShader );
+
+		return false;
+	}
+
+	return true;
 }
 
 void

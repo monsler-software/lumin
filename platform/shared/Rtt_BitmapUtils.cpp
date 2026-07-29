@@ -19,6 +19,25 @@
 namespace bitmapUtil
 {
 
+	// Where the channels of a pixel the renderer captured as kBGRA actually sit
+	// in memory. bgfx reads a BGRA8 texture back as the bytes it holds, so the
+	// name is literal there. Desktop GL is asked for the same pixels as a packed
+	// 32-bit word (GL_BGRA with GL_UNSIGNED_INT_8_8_8_8, see
+	// GLRenderer::CaptureFrameBuffer), which a little-endian machine stores in
+	// the opposite order -- A,R,G,B. Reading those as if they were B,G,R,A is
+	// what made display.save write pairwise-swapped channels on the GL build.
+#if defined( Rtt_USE_BGFX ) || defined( Rtt_OPENGLES )
+	static const int kCaptureR = 2;
+	static const int kCaptureG = 1;
+	static const int kCaptureB = 0;
+	static const int kCaptureA = 3;
+#else
+	static const int kCaptureR = 1;
+	static const int kCaptureG = 2;
+	static const int kCaptureB = 3;
+	static const int kCaptureA = 0;
+#endif
+
 	struct JpegErrorMgr
 	{
 		struct jpeg_error_mgr pub;	// "public" fields
@@ -175,9 +194,9 @@ namespace bitmapUtil
 			uint8_t* dst = rgb.get();
 			for (int i = 0; i < width * height; i++)
 			{
-				*dst++ = src[2];
-				*dst++ = src[1];
-				*dst++ = src[0];
+				*dst++ = src[kCaptureR];
+				*dst++ = src[kCaptureG];
+				*dst++ = src[kCaptureB];
 				src += 4;
 			}
 			data = rgb.get();
@@ -382,10 +401,10 @@ namespace bitmapUtil
 			U8* dst = rgba;
 			for (int i = 0; i < width * height; i++)
 			{
-				dst[0] = src[2];
-				dst[1] = src[1];
-				dst[2] = src[0];
-				dst[3] = src[3];
+				dst[0] = src[kCaptureR];
+				dst[1] = src[kCaptureG];
+				dst[2] = src[kCaptureB];
+				dst[3] = src[kCaptureA];
 				dst += 4;
 				src += 4;
 			}

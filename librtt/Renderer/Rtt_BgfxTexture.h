@@ -57,6 +57,10 @@ class BgfxTexture : public GPUResource
 		// a Corona texture need no work here.
 		static U32 SamplerFlags( const Texture& texture );
 
+		// How wide a pixel of this format is, for the paths that have to line a
+		// texture's bytes up against a CPU-side buffer.
+		static U32 BytesPerPixel( bgfx::TextureFormat::Enum format );
+
 	private:
 		// How many mip levels this texture carries, given its size and what it
 		// is for.

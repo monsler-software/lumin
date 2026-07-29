@@ -60,6 +60,12 @@ class Renderer;
 struct BgfxExports
 {
 	static Renderer* CreateBgfxRenderer( Rtt_Allocator* allocator, const BgfxSurfaceParams& params );
+
+	// Constructs the statics bgfx would otherwise create lazily, so that they
+	// are destroyed after -- not before -- anything the caller registers with
+	// atexit() afterwards. Call once, first thing in main(); see the note on the
+	// definition for what goes wrong without it.
+	static void ClaimStatics();
 };
 
 // ----------------------------------------------------------------------------

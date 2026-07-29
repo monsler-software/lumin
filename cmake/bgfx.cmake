@@ -74,7 +74,27 @@ add_subdirectory("${BGFX_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}/bgfx" EXCLUDE_FROM_
 # the framebuffer and the target simply does not draw -- there is no runtime way
 # to raise it, and the backend this replaces had no such ceiling. The pools are
 # arrays of small records, so the cost of the larger figure is a few hundred KB.
-target_compile_definitions(bgfx PRIVATE BGFX_CONFIG_MAX_FRAME_BUFFERS=1024)
+#
+# The same reasoning applies to the other pools Corona content can exhaust:
+#
+#   - Views. Every framebuffer bound in a frame takes one, so a scene with a few
+#     hundred snapshots or filtered containers runs a frame out of them, and past
+#     the end the renderer has to reuse an id and draw out of order.
+#   - Uniforms. One per distinct name across every kernel a project ever loads,
+#     for as long as bgfx is up.
+#   - Shaders and programs. One program per kernel variant, and Corona's shell
+#     produces several variants of each.
+#
+# Views and programs are also sort-key fields, so their bit widths come out of a
+# 64-bit budget: 10 bits of view and 11 of program leave the widest key (view,
+# draw bit, type, blend, alpha ref, program, 32 bits of depth) at 59 bits.
+target_compile_definitions(bgfx PRIVATE
+	BGFX_CONFIG_MAX_FRAME_BUFFERS=1024
+	BGFX_CONFIG_MAX_VIEWS=1024
+	BGFX_CONFIG_MAX_UNIFORMS=2048
+	BGFX_CONFIG_MAX_SHADERS=2048
+	BGFX_CONFIG_SORT_KEY_NUM_BITS_PROGRAM=11 # BGFX_CONFIG_MAX_PROGRAMS = 2048
+)
 
 # ----------------------------------------------------------------------------
 # shaderc as a library

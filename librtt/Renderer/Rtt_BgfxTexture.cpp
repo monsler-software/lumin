@@ -71,8 +71,8 @@ TextureFormat( Texture::Format format, bool& swapRedAndBlue )
 	}
 }
 
-static U32
-BytesPerPixel( bgfx::TextureFormat::Enum format )
+U32
+BgfxTexture::BytesPerPixel( bgfx::TextureFormat::Enum format )
 {
 	switch ( format )
 	{

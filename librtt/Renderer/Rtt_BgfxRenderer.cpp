@@ -22,6 +22,8 @@
 #include "Core/Rtt_Assert.h"
 #include "Core/Rtt_String.h"
 
+#include <bx/thread.h>
+
 #include <map>
 #include <string>
 
@@ -74,16 +76,6 @@ BuiltInUniformType( U32 index )
 	}
 }
 
-// Uniforms created for names that only exist once a shader has been compiled,
-// i.e. whatever a defineEffect kernel declared. Keyed by name because that is
-// all bgfx identifies them by.
-static std::map< std::string, bgfx::UniformHandle >&
-NamedUniforms()
-{
-	static std::map< std::string, bgfx::UniformHandle > sNamedUniforms;
-	return sNamedUniforms;
-}
-
 // ----------------------------------------------------------------------------
 
 BgfxRenderer::BgfxRenderer( Rtt_Allocator* allocator, const BgfxSurfaceParams& params )
@@ -94,6 +86,7 @@ BgfxRenderer::BgfxRenderer( Rtt_Allocator* allocator, const BgfxSurfaceParams& p
 	fResetFlags( BGFX_RESET_VSYNC ),
 	fMultisampleEnabled( false ),
 	fNextViewId( 1 ), // view 0 is the window
+	fViewIdsExhausted( false ),
 	fOverlayProc( NULL ),
 	fOverlayReleaseProc( NULL ),
 	fOverlayUserdata( NULL ),
@@ -102,7 +95,8 @@ BgfxRenderer::BgfxRenderer( Rtt_Allocator* allocator, const BgfxSurfaceParams& p
 	fReadBackHeight( 0 ),
 	fReadBackFormat( bgfx::TextureFormat::RGBA8 ),
 	fReadBackBuffer( NULL ),
-	fReadBackBufferSize( 0 )
+	fReadBackBufferSize( 0 ),
+	fUniformLimitReported( false )
 {
 	for ( U32 i = 0; i < Texture::kNumUnits; ++i )
 	{
@@ -292,9 +286,7 @@ BgfxRenderer::DestroyUniforms()
 		}
 	}
 
-	std::map< std::string, bgfx::UniformHandle >& named = NamedUniforms();
-
-	for ( std::map< std::string, bgfx::UniformHandle >::iterator it = named.begin(); it != named.end(); ++it )
+	for ( NamedUniformMap::iterator it = fNamedUniforms.begin(); it != fNamedUniforms.end(); ++it )
 	{
 		if ( bgfx::isValid( it->second ) )
 		{
@@ -302,7 +294,9 @@ BgfxRenderer::DestroyUniforms()
 		}
 	}
 
-	named.clear();
+	fNamedUniforms.clear();
+
+	fUniformLimitReported = false;
 }
 
 bgfx::UniformHandle
@@ -351,10 +345,9 @@ BgfxRenderer::GetNamedUniform( const char* name, U32 sizeInBytes )
 		return BGFX_INVALID_HANDLE;
 	}
 
-	std::map< std::string, bgfx::UniformHandle >& named = NamedUniforms();
-	std::map< std::string, bgfx::UniformHandle >::iterator it = named.find( name );
+	NamedUniformMap::iterator it = fNamedUniforms.find( name );
 
-	if ( it != named.end() )
+	if ( it != fNamedUniforms.end() )
 	{
 		return it->second;
 	}
@@ -367,7 +360,24 @@ BgfxRenderer::GetNamedUniform( const char* name, U32 sizeInBytes )
 		, vectorCount > 0 ? vectorCount : 1
 		);
 
-	named[name] = handle;
+	// bgfx's uniform pool is fixed at compile time (see BGFX_CONFIG_MAX_UNIFORMS
+	// in cmake/bgfx.cmake), and a project with enough distinct kernel variables
+	// can still reach the end of it. An invalid handle is not cached: it would
+	// turn a temporary exhaustion into a permanent one for that name, and the
+	// caller already knows to skip a uniform it cannot get.
+	if ( !bgfx::isValid( handle ) )
+	{
+		if ( !fUniformLimitReported )
+		{
+			fUniformLimitReported = true;
+
+			Rtt_LogException( "ERROR: this project uses more shader variables than the renderer can hold (%u), so some effects will draw with stale values\n", U32( fNamedUniforms.size() ) );
+		}
+
+		return handle;
+	}
+
+	fNamedUniforms[name] = handle;
 
 	return handle;
 }
@@ -382,9 +392,17 @@ BgfxRenderer::AcquireViewId()
 	// with enough filters and snapshots can ask for more than bgfx has. Reusing
 	// the last one draws into the right target with the wrong ordering, which
 	// is a good deal better than handing bgfx an id it will reject.
-	if ( U32( fNextViewId ) + 1 >= limit )
+	if ( U32( fNextViewId ) >= limit )
 	{
-		Rtt_TRACE( ( "WARNING: this frame needs more than the %u render passes bgfx allows; some may draw out of order\n", limit ) );
+		// Once a frame, not once per target: a frame that overruns the limit
+		// overruns it for every target after that one, and a warning per bind
+		// would bury the log.
+		if ( !fViewIdsExhausted )
+		{
+			fViewIdsExhausted = true;
+
+			Rtt_LogException( "WARNING: this frame needs more than the %u render passes the renderer allows; some may draw out of order\n", limit );
+		}
 
 		return bgfx::ViewId( limit - 1 );
 	}
@@ -396,6 +414,7 @@ void
 BgfxRenderer::ResetViewIds()
 {
 	fNextViewId = 1;
+	fViewIdsExhausted = false;
 }
 
 void
@@ -599,6 +618,17 @@ BgfxRenderer::CaptureFrameBuffer( RenderingStream & stream, BufferBitmap & bitma
 
 	const U32 bytesPerPixel = U32( PlatformBitmap::BytesPerPixel( bitmap.GetFormat() ) );
 
+	// What came back is the texture's own bytes, and the texture need not be laid
+	// out the way the bitmap says it is: a kBGRA render target falls back to
+	// RGBA8 where the backend has no BGRA8 (see TextureFormat in
+	// Rtt_BgfxTexture.cpp), and then the two disagree on where red and blue sit.
+	bool swapRedAndBlue = false;
+
+	if ( !ReadBackMatchesBitmap( bitmap.GetFormat(), bytesPerPixel, swapRedAndBlue ) )
+	{
+		return;
+	}
+
 	// Corona expects what glReadPixels gives it: rows from the bottom up. The
 	// texture already holds them that way on every backend, because anything
 	// drawn into one has its clip-space Y flipped where the framebuffer origin
@@ -612,11 +642,68 @@ BgfxRenderer::CaptureFrameBuffer( RenderingStream & stream, BufferBitmap & bitma
 
 	for ( U32 row = 0; row < rows; ++row )
 	{
-		memcpy(
-			  dst + row * U32( bitmap.Width() ) * bytesPerPixel
-			, fReadBackBuffer + row * U32( fReadBackWidth ) * bytesPerPixel
-			, rowBytes
-			);
+		U8* destinationRow = dst + row * U32( bitmap.Width() ) * bytesPerPixel;
+		const U8* sourceRow = fReadBackBuffer + row * U32( fReadBackWidth ) * bytesPerPixel;
+
+		if ( swapRedAndBlue )
+		{
+			for ( U32 offset = 0; offset < rowBytes; offset += 4 )
+			{
+				destinationRow[offset + 0] = sourceRow[offset + 2];
+				destinationRow[offset + 1] = sourceRow[offset + 1];
+				destinationRow[offset + 2] = sourceRow[offset + 0];
+				destinationRow[offset + 3] = sourceRow[offset + 3];
+			}
+		}
+		else
+		{
+			memcpy( destinationRow, sourceRow, rowBytes );
+		}
+	}
+}
+
+// Whether the bytes the readback texture holds can be handed to a bitmap of this
+// format, and if so whether red and blue have to change places on the way.
+bool
+BgfxRenderer::ReadBackMatchesBitmap( PlatformBitmap::Format format, U32 bytesPerPixel, bool& swapRedAndBlue ) const
+{
+	swapRedAndBlue = false;
+
+	if ( U32( BgfxTexture::BytesPerPixel( fReadBackFormat ) ) != bytesPerPixel )
+	{
+		Rtt_LogException( "ERROR: a capture cannot be read back into a bitmap of a different pixel size\n" );
+		return false;
+	}
+
+	// Only the two four-channel layouts ever reach a capture; anything else is
+	// copied across as it came, which is what the pixel-size check above allows.
+	const bool sourceIsBGRA = ( bgfx::TextureFormat::BGRA8 == fReadBackFormat );
+	const bool sourceIsRGBA = ( bgfx::TextureFormat::RGBA8 == fReadBackFormat );
+
+	if ( !sourceIsBGRA && !sourceIsRGBA )
+	{
+		return true;
+	}
+
+	// PlatformBitmap names the channels from the most significant byte down, so
+	// on a little-endian machine kRGBA is the bytes A,B,G,R -- but the capture
+	// path is written around the byte order the renderer produces (see the note
+	// in BufferBitmap::UndoPremultipliedAlpha), which is alpha last. So kRGBA
+	// here means R,G,B,A in memory and kBGRA means B,G,R,A.
+	switch ( format )
+	{
+		case PlatformBitmap::kRGBA:
+		case PlatformBitmap::kABGR:
+			swapRedAndBlue = sourceIsBGRA;
+			return true;
+
+		case PlatformBitmap::kBGRA:
+		case PlatformBitmap::kARGB:
+			swapRedAndBlue = sourceIsRGBA;
+			return true;
+
+		default:
+			return true;
 	}
 }
 
@@ -641,6 +728,27 @@ Renderer*
 BgfxExports::CreateBgfxRenderer( Rtt_Allocator* allocator, const BgfxSurfaceParams& params )
 {
 	return Rtt_NEW( allocator, BgfxRenderer( allocator, params ) );
+}
+
+void
+BgfxExports::ClaimStatics()
+{
+	// Destructors run in reverse order of registration, and a function-local
+	// static registers its own the first time it is reached -- so a static
+	// created after an atexit() call is destroyed before that handler runs. bx
+	// has one of these: the allocator bx::Thread takes its queue from, reached
+	// first when bgfx::init() starts the render thread, and used again when
+	// bgfx::shutdown() frees that queue. A host that shuts the runtime down from
+	// an atexit handler (which is how Lua's os.exit() has to be survived, since
+	// it never returns to main) would find it already destroyed, and freeing
+	// through a destroyed allocator is a pure virtual call.
+	//
+	// Creating a thread object here and dropping it is what constructs that
+	// allocator early. It never runs anything: bx::Thread only starts a thread
+	// when init() is called on it.
+	bx::Thread unused;
+
+	(void)unused;
 }
 
 // ----------------------------------------------------------------------------

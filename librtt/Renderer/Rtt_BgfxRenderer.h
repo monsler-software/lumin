@@ -16,9 +16,14 @@
 #include "Renderer/Rtt_Texture.h"
 #include "Renderer/Rtt_Uniform.h"
 
+#include "Display/Rtt_PlatformBitmap.h"
+
 #include "Core/Rtt_Array.h"
 
 #include <bgfx/bgfx.h>
+
+#include <map>
+#include <string>
 
 // ----------------------------------------------------------------------------
 
@@ -137,6 +142,11 @@ class BgfxRenderer : public Renderer
 		bool EnsureReadBackTexture( U16 width, U16 height, bgfx::TextureFormat::Enum format );
 		void DestroyReadBackTexture();
 
+		// Whether what the readback texture holds can be copied into a bitmap of
+		// this format, and if so whether red and blue have to be exchanged: a
+		// kBGRA render target is an RGBA8 texture where the backend has no BGRA8.
+		bool ReadBackMatchesBitmap( PlatformBitmap::Format format, U32 bytesPerPixel, bool& swapRedAndBlue ) const;
+
 		BgfxSurfaceParams fParams;
 		BgfxDrawState fDrawState;
 		LightPtrArray< const CoronaCommand > fCustomCommands;
@@ -148,6 +158,10 @@ class BgfxRenderer : public Renderer
 		bool fMultisampleEnabled;
 
 		bgfx::ViewId fNextViewId;
+
+		// Whether this frame has already said it ran out of them; cleared when
+		// the numbering restarts.
+		bool fViewIdsExhausted;
 
 		OverlayProc fOverlayProc;
 		OverlayReleaseProc fOverlayReleaseProc;
@@ -162,6 +176,23 @@ class BgfxRenderer : public Renderer
 
 		bgfx::UniformHandle fSamplerUniforms[Texture::kNumUnits];
 		bgfx::UniformHandle fBuiltInUniforms[Uniform::kNumBuiltInVariables];
+
+		// Uniforms created for names that only exist once a shader has been
+		// compiled, i.e. whatever a defineEffect kernel declared. Keyed by name
+		// because that is all bgfx identifies them by.
+		//
+		// A member rather than a file-scope map: these hold bgfx handles, and
+		// bgfx is shut down and reinitialized every time a project is opened, so
+		// a cache that outlived the renderer would hand out handles from a
+		// previous context. It also has to be gone before bgfx::shutdown(),
+		// which a static would not manage.
+		typedef std::map< std::string, bgfx::UniformHandle > NamedUniformMap;
+
+		NamedUniformMap fNamedUniforms;
+
+		// Whether the uniform pool running dry has already been reported, so it
+		// is said once rather than per effect that fails to bind.
+		bool fUniformLimitReported;
 };
 
 // ----------------------------------------------------------------------------
