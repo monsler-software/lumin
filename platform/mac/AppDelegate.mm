@@ -126,7 +126,7 @@
 
 // -------------------------
 
-// Container for Extension attributes (see loadExtensionMenu)
+// Container for Extension attributes (see loadExtensions)
 @interface ExtensionParams : NSObject
 {
 }
@@ -219,9 +219,6 @@ static NSString* kRunningExtensions = @"runningExtensions";
 static NSString* kDockIconBounceTime = @"dockIconBounceTime";
 static NSString* kSuppressUnsupportedOSWarning = @"suppressUnsupportedOSWarning";
 
-static NSString* kWindowMenuItemName = @"Window";
-static NSString* kBorderlessMenuItemName = @"Borderless";
-static NSString* kViewAsMenuItemName = @"View As";
 
 // TODO: Remove once the Beta is over
 static NSString* kEnableLinuxBuild = @"enableLinuxBuild";
@@ -565,7 +562,6 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 @property (nonatomic, readwrite, copy) CLLocation *_currentLocation;
 
 -(BOOL)setSkinIfAllowed:(Rtt::TargetDevice::Skin)skin;
-- (void) updateMenuForSkinChange;
 - (void) restoreUserSkinSetting;
 - (void) saveUserSkinSetting;
 @end
@@ -877,110 +873,12 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
     }
 }
 
-- (void)menuNeedsUpdate:(NSMenu *)menu
-{
-	// Remove the "Start dictation" and "Emoji" items from the Edit menu
-	[[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"NSDisabledDictationMenuItem"];
-	[[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"NSDisabledCharacterPaletteMenuItem"];
-
-    // NSLog(@"menuNeedsUpdate: %@", menu);
-    
-    Rtt_ASSERT([[menu title] isEqualToString:kWindowMenuItemName]);
-    
-    NSMenuItem *viewAsItem = [menu itemWithTitle:kViewAsMenuItemName];
-    NSMenu *viewAsMenu = [viewAsItem submenu];
-    
-    Rtt_ASSERT(viewAsMenu != nil);
-    
-    // If we haven't added any menu items yet
-    if ([viewAsMenu numberOfItems] > 0)
-    {
-        return;
-    }
-
-    const char *itemTitle = NULL;
-    NSString *lastDeviceType = nil;
-    int skinCount = 0;
-    long itemCount = 0;
-    long viewAsItemCount = 0;
-    NSFont *font = [NSFont systemFontOfSize:[NSFont systemFontSizeForControlSize:NSRegularControlSize]];
-    NSMenu *parentMenu = viewAsMenu;
-
-    while ((itemTitle = Rtt::TargetDevice::NameForSkin(skinCount)) != NULL)
-    {
-        int skinWidth = Rtt::TargetDevice::WidthForSkin(skinCount);
-        int skinHeight = Rtt::TargetDevice::HeightForSkin(skinCount);
-        NSString *deviceType = [NSString stringWithExternalString:Rtt::TargetDevice::DeviceTypeForSkin(skinCount)];
-
-        // Note that this programmatic conceit depends on "borderless-*" being sorted to the end of the device types
-        // (see Rtt_TargetDevice.cpp)
-        if (parentMenu == viewAsMenu && lastDeviceType != nil && [deviceType hasPrefix:@"borderless-"])
-        {
-            [parentMenu insertItem:[NSMenuItem separatorItem] atIndex:itemCount];
-            ++itemCount;
-
-            NSMenuItem *newItem = [viewAsMenu insertItemWithTitle:kBorderlessMenuItemName
-                                                           action:nil
-                                                    keyEquivalent:@""
-                                                          atIndex:itemCount];
-
-            viewAsItemCount = itemCount + 1;
-            lastDeviceType = deviceType;
-            itemCount = 0;
-            parentMenu = [[NSMenu alloc] init];
-            [viewAsMenu setSubmenu:parentMenu forItem:newItem];
-        }
-
-        NSMenuItem *newItem = [parentMenu insertItemWithTitle:[NSString stringWithExternalString:itemTitle]
-                                                       action:@selector(viewAsAction:)
-                                                keyEquivalent:@""
-                                                      atIndex:itemCount];
-        [newItem setTag:skinCount];
-
-
-        NSMutableParagraphStyle* paragraphStyle = [[NSMutableParagraphStyle alloc] init];
-        NSMutableArray *tabs = [NSMutableArray array];
-        [tabs addObject:[[NSTextTab alloc] initWithTextAlignment:NSRightTextAlignment location:220 options:[NSDictionary dictionary]]];
-        paragraphStyle.tabStops = tabs;
-        NSMutableDictionary* attr = [[NSMutableDictionary alloc] initWithObjectsAndKeys:font, NSFontAttributeName, paragraphStyle, NSParagraphStyleAttributeName, nil ];
-        NSString *widthHeight = [NSString stringWithFormat:@"\t%dx%d%@", skinWidth, skinHeight, (skinHeight < 1000 ? @"\u2007" : @"")]; // Unicode numeric space
-        NSMutableAttributedString* formattedTitle = [[NSMutableAttributedString alloc] initWithString:[[newItem title] stringByAppendingString:widthHeight] attributes:attr];
-
-        NSRange range = { ([formattedTitle length] - [widthHeight length]), [widthHeight length] };
-        [attr setObject:[NSFont boldSystemFontOfSize:[NSFont labelFontSize]] forKey:NSFontAttributeName];
-        [formattedTitle setAttributes:attr range:range];
-
-        [newItem setAttributedTitle:formattedTitle];
-
-        [attr release];
-        [paragraphStyle release];
-        [formattedTitle release];
-       
-        if (lastDeviceType != nil && ! [deviceType isEqualToString:lastDeviceType])
-        {
-            [parentMenu insertItem:[NSMenuItem separatorItem] atIndex:itemCount];
-            ++itemCount;
-        }
-
-        lastDeviceType = deviceType;
-
-        ++skinCount;
-        ++itemCount;
-    }
-    
-    // If they're a "Pro" user they can define a custom device
-	[viewAsMenu insertItem:[NSMenuItem separatorItem] atIndex:viewAsItemCount];
-	++viewAsItemCount;
-	
-	NSMenuItem *newItem = [viewAsMenu insertItemWithTitle:@"Custom Device..."
-												   action:@selector(showCustomDevice:)
-											keyEquivalent:@""
-												  atIndex:viewAsItemCount];
-	[newItem setTag:kCustomDeviceMenuTag];
-    
-    // Make sure the current skin is checked
-    [self updateMenuForSkinChange];
-}
+// The simulator's menu bar is Rtt::MenuBar now, drawn by bgfx inside the
+// window, so what used to be here is gone: an NSMenuDelegate that built the
+// "View As" submenu out of the skin list the first time it was opened, hung a
+// "Borderless" submenu off it, and kept a check mark on the current skin.
+// The skins themselves are still reachable through viewAsAction:, which the
+// bar dispatches to by the same tag.
 
 // TODO: Clean this up.  Total mess
 -(void)applicationDidFinishLaunching:(NSNotification*)aNotification
@@ -1035,12 +933,7 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 	
 
 	
-    [self loadExtensionMenu];
-
-    NSMenu *appMenu = [[NSApplication sharedApplication] mainMenu];
-    NSMenuItem *windowMenuItem = [appMenu itemWithTitle:kWindowMenuItemName];
-    NSMenu *windowMenu = [windowMenuItem submenu];
-    [windowMenu setDelegate:self];
+    [self loadExtensions];
 
 	if( NO == self.launchedWithFile )
 	{
@@ -1084,7 +977,7 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 }
 
 //
-// loadExtensionMenu
+// loadExtensions
 //
 // Look in an Extensions folder in the .app bundle (a sibling of Resources) and
 // in "~/Library/Application Support/Corona/Simulator/Extensions" for extensions to load.
@@ -1092,7 +985,7 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 // an extension is instantiated.  Any extensions that were running last time the Simulator
 // was exited are reloaded.
 //
-- (void) loadExtensionMenu
+- (void) loadExtensions
 {
     // Find the application support directory
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
@@ -1110,26 +1003,19 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
     NSMutableArray *simExtensions = [[[NSMutableArray alloc] initWithArray:builtinSimExtensions] autorelease];
     [simExtensions addObjectsFromArray:publicSimExtensions];
     
-    NSMenu *appMenu = [[NSApplication sharedApplication] mainMenu];
-    NSMenuItem *windowMenuItem = [appMenu itemWithTitle:kWindowMenuItemName];
-    NSMenu *windowMenu = [windowMenuItem submenu];
-    long welcomeItemIdx = [windowMenu indexOfItemWithTitle:@"Welcome to Solar2D"];
+    // The extensions used to live on the Window menu, which doubled as the
+    // record of what had been found: each item carried its ExtensionParams as
+    // its represented object, and everything that needed an extension went
+    // looking through the menu for it. With the menu gone they are kept here
+    // instead, which is what they always were underneath.
+    [fExtensions removeAllObjects];
 
-    if (welcomeItemIdx == -1)
-    {
-        // for some reason we can't find the Welcome menuitem, bail
-        // TODO: if we make the Welcome window an extension we'll need to address the chicken and egg problem here
-        return;
-    }
-    
     if ([simExtensions count] > 0)
     {
-        long menuIdx = welcomeItemIdx + 1;
         NSArray *runningExt = [[NSUserDefaults standardUserDefaults] objectForKey:kRunningExtensions];
         
         for (NSURL *extURL in simExtensions)
         {
-            NSMenuItem *extMenuItem = nil;
             NSString *extPath = [extURL path];
             int status = 0;
             lua_State *L = CoronaLuaNew( kCoronaLuaFlagNone );
@@ -1192,42 +1078,18 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 
             ExtensionParams *extParams = [[ExtensionParams alloc] initParams:windowTitle path:extPath width:width height:height resizable:resizable showWindowTitle:showWindowTitle];
             
-            // If this is the builtin "Welcome" extension put it on the existing menuitem
-            if ([extPath hasSuffix:[builtinExtDirectory stringByAppendingPathComponent:@"welcome"]])
+            [fExtensions addObject:extParams];
+
+            if (runningExt != nil)
             {
-                extMenuItem = [windowMenu itemAtIndex:welcomeItemIdx];
-                Rtt_ASSERT( extMenuItem ); // must exist
-                [extMenuItem setTitle:windowTitle];
-                [extMenuItem setAction:@selector(extensionAction:)];
-                // item already has a keyEquivalent
-            }
-            else
-            {
-                // If there are too many extensions, "keyEquivalent" will top out at Cmd+9
-                extMenuItem = [windowMenu insertItemWithTitle:windowTitle
-                                                       action:@selector(extensionAction:)
-                                                keyEquivalent:[NSString stringWithFormat:@"%ld",
-                                                               (menuIdx - welcomeItemIdx)+1]
-                                                      atIndex:menuIdx];
-                ++menuIdx;
-            }
-            
-            if (extMenuItem != nil)
-            {
-                // Point the menuitem at the extension's window size so we can pick it up when the window is instantiated
-                [extMenuItem setRepresentedObject:extParams];
-                
-                if (runningExt != nil)
+                // If this extension was loaded last time we ran, load it again
+                for (NSString *extPath in runningExt)
                 {
-                    // If this extension was loaded last time we ran, load it again
-                    for (NSString *extPath in runningExt)
+                    // If this is the composer, only open it if fOpenLastProject is set, otherwise open it in loadExtensions
+                    if (([extPath isEqualToString:extParams.path] && [extPath hasSuffix:[builtinExtDirectory stringByAppendingPathComponent:@"composer"]] && fOpenLastProject) ||
+                        [extPath isEqualToString:extParams.path])
                     {
-                        // If this is the composer, only open it if fOpenLastProject is set, otherwise open it in loadExtensions
-                        if (([extPath isEqualToString:extParams.path] && [extPath hasSuffix:[builtinExtDirectory stringByAppendingPathComponent:@"composer"]] && fOpenLastProject) ||
-                            [extPath isEqualToString:extParams.path])
-                        {
-                            [self loadExtension:extParams];
-                        }
+                        [self loadExtension:extParams];
                     }
                 }
             }
@@ -1298,16 +1160,15 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 //
 // extensionAction
 //
-// Menuitem callback for extensions.  If the extension is not running, run it otherwise bring its window to the front.
+// Opens an extension: if it is not running, run it, otherwise bring its window
+// to the front. This used to be the Window menu's action for the item that
+// carried the extension; now the extension is passed directly.
 //
-- (void) extensionAction:(id)sender
+- (void) extensionAction:(ExtensionParams *)extParams
 {
-    NSMenuItem *menuItem = (NSMenuItem *) sender;
-    ExtensionParams *extParams = [menuItem representedObject];
-    
     if (extParams != nil && extParams.view != nil)
     {
-        [[extParams.view window] makeKeyAndOrderFront:sender];
+        [[extParams.view window] makeKeyAndOrderFront:self];
     }
     else
     {
@@ -1323,34 +1184,14 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 //
 - (void) runExtension:(NSString *) extName
 {
-    NSMenu *appMenu = [[NSApplication sharedApplication] mainMenu];
-    NSMenuItem *windowMenuItem = [appMenu itemWithTitle:kWindowMenuItemName];
-    NSMenu *windowMenu = [windowMenuItem submenu];
-    long welcomeItemIdx = [windowMenu indexOfItemWithTitle:@"Welcome to Solar2D"];
-    
-    if (welcomeItemIdx == -1)
+    for (ExtensionParams *extParams in fExtensions)
     {
-        // for some reason we can't find the Welcome menuitem, bail
-        // TODO: if we make the Welcome window an extension we'll need to address the chicken and egg problem here
-        return;
-    }
-    
-    // Iterate through the extension items on the Window menu looking for the one with the specified name
-    NSArray *menuItems = [windowMenu itemArray];
-    
-    for (NSMenuItem* item in menuItems)
-    {
-        if ([[item representedObject] isKindOfClass:[ExtensionParams class]])
+        if ([extName isEqualToString:[extParams.path lastPathComponent]])
         {
-            ExtensionParams *extParams = [item representedObject];
+            Rtt_TRACE(("Running extension %s", [extParams.path UTF8String]));
+            [self extensionAction:extParams];
 
-            if ([extName isEqualToString:[extParams.path lastPathComponent]])
-            {
-                Rtt_TRACE(("Running extension %s", [extParams.path UTF8String]));
-                [self extensionAction:item];
-                
-                return;
-            }
+            return;
         }
     }
 
@@ -1378,8 +1219,45 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 // Note: Formerly, we had most of this code (particularly coronaInit in applicationDidFinishLaunching.
 // I moved to applicationWillFinishLaunching so the initialization could be done before application:openFile: is invoked.
 // I believe this is generally safe enough because awakeFromNib gets called before applicationWillFinishLaunching.
+// Replaces the menu bar the main nib brings with it.
+//
+// macOS installs a nib's menu bar as the application's own, and it insists on
+// there being one: the application menu -- the bold one carrying Quit -- is
+// not optional, and an app without it cannot be quit or hidden by the means
+// every other app offers. So the bar is not removed, it is reduced to that.
+//
+// Everything the simulator used to hang off it -- File, Hardware, View, the
+// skin list under "View As", Help -- is drawn by Rtt::MenuBar now.
+static void
+StripMenuBarToApplicationMenu()
+{
+	NSMenu* mainMenu = [[NSApplication sharedApplication] mainMenu];
+
+	if (nil == mainMenu || [mainMenu numberOfItems] <= 0)
+	{
+		return;
+	}
+
+	// The application menu is always the first item, whatever the nib called
+	// it -- macOS titles it from the bundle name rather than from the nib.
+	NSMenuItem* applicationItem = [[[mainMenu itemAtIndex:0] retain] autorelease];
+
+	for (NSInteger i = [mainMenu numberOfItems] - 1; i >= 0; --i)
+	{
+		[mainMenu removeItemAtIndex:i];
+	}
+
+	[mainMenu addItem:applicationItem];
+}
+
 -(void)applicationWillFinishLaunching:(NSNotification*)aNotification
 {
+	// Before anything can open a menu, and before the extensions are read,
+	// since those used to be put on the Window menu.
+	StripMenuBarToApplicationMenu();
+
+	fExtensions = [[NSMutableArray alloc] init];
+
 	fServices = new Rtt::MacPlatformServices( *fConsolePlatform );
 	fNextUpsellTime = 0;
 	NSString* v = [[NSUserDefaults standardUserDefaults] stringForKey:@"debugBuildProcess"];
@@ -2035,7 +1913,6 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 		// There is an inital state condition where we need to make sure the skin checkmarks have been checked.
 		// This is mostly hit the very first time Solar2D is run since there is no previous skin and
 		// the default skin was setup before KVO was setup (in init) so we need to force a menu update.
-		[self updateMenuForSkinChange];
 
 		[self launchSimulator:nil];
 		result = YES;
@@ -2394,34 +2271,6 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 	}
 }
 
-// The "Clear Project Sandbox" menuitem needs an ellipsis if the user has not not chosen to suppress
-// the confirmation dialog so we do that here (binding the menuitem title doesn't work here)
-- (BOOL) setClearProjectSandboxTitle
-{
-	NSString *menuitemTitle = @"Clear Project Sandbox";
-	NSMenu *appMenu = [[NSApplication sharedApplication] mainMenu];
-	NSMenuItem *fileMenuItem = [appMenu itemWithTitle:@"File"];
-	NSMenu *fileMenu = [fileMenuItem submenu];
-	NSMenuItem *clearProjectSandboxItem = [fileMenu itemWithTag:kClearProjectSandboxMenuTag];
-
-	if (fAppPath != nil && [self isRunning])
-	{
-		char keyId[CC_MD5_DIGEST_LENGTH*2 + 1];
-		MD5Hash( keyId, [fAppPath UTF8String] );
-		NSString *suppressionPrefName = [NSString stringWithFormat:@"%@/%s", @"shouldSuppressClearProjectAlert", keyId];
-
-		if (! [[NSUserDefaults standardUserDefaults] boolForKey:suppressionPrefName])
-		{
-			menuitemTitle = [menuitemTitle stringByAppendingString:@"…"];
-		}
-	}
-
-	[clearProjectSandboxItem setTitle:menuitemTitle];
-	[clearProjectSandboxItem setTag:kClearProjectSandboxMenuTag]; // this seems to be forgotten unless reset
-
-	return [self isRunning];
-}
-
 // Handle the "Clear Project Sandbox" menu item which will confirm the action unless the user has previously
 // checked the "Do not show this message again" checkbox
 - (IBAction) clearProjectSandbox:(id)sender
@@ -2597,39 +2446,6 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
     }
 }
 
-- (void) updateMenuForSkinChange
-{
-    NSMenu *appMenu = [[NSApplication sharedApplication] mainMenu];
-    NSMenuItem *windowMenuItem = [appMenu itemWithTitle:kWindowMenuItemName];
-    NSMenu *windowMenu = [windowMenuItem submenu];
-    NSMenuItem *viewAsItem = [windowMenu itemWithTitle:kViewAsMenuItemName];
-    NSMenu *viewAsMenu = [viewAsItem submenu];
-    NSMenu *borderlessMenu = [[viewAsMenu itemWithTitle:kBorderlessMenuItemName] submenu];
-
-    Rtt_ASSERT(viewAsItem != nil);
-
-    NSMutableArray *skinMenuItems = [NSMutableArray arrayWithArray:[viewAsMenu itemArray]];
-
-    if (borderlessMenu != nil)
-    {
-        // We can get called before the View As menus is completely set up but we'll
-        // get called again before it's visible
-        [skinMenuItems addObjectsFromArray:[borderlessMenu itemArray]];
-    }
-    
-    for (NSMenuItem *item in skinMenuItems)
-    {
-        if ([item tag] == self.fSkin || (self.fSkin == Rtt::TargetDevice::kCustomSkin && [item tag] == kCustomDeviceMenuTag))
-        {
-            [item setState:NSOnState];
-        }
-        else
-        {
-            [item setState:NSOffState];
-        }
-    }
-}
-
 - (void) observeValueForKeyPath:(NSString*)key_path
 					  ofObject:(id)the_object 
 						change:(NSDictionary*)the_change
@@ -2638,7 +2454,6 @@ Rtt_EXPORT const luaL_Reg* Rtt_GetCustomModulesList()
 	if([key_path isEqualToString:@"fSkin"])
 	{
 		[self saveUserSkinSetting];
-		[self updateMenuForSkinChange];		
 	}
 }
 

@@ -4,9 +4,7 @@
 //
 #define IDD_ABOUTBOX                    100
 #define IDR_MAINFRAME                   128
-#define IDR_SIMULATOR_MENU              128
 #define IDR_ACTIVEWND                   129
-#define IDR_HOME_MENU                   129
 #define IDS_BUILDWEBUPSELL              129
 #define IDS_INVALID_WEB_APP_VERSION_NUMBER 130
 #define IDS_INVALID_LINUX_APP_VERSION_NUMBER 131

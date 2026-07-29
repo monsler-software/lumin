@@ -91,6 +91,10 @@ FormatExtensionList::FormatExtensionList()
     fNames( NULL ),
     fAttributeCount( 0 ),
     fGroupCount( 0 ),
+    // Only Build() sets this; a list assembled any other way -- FromArrays(),
+    // which is how ReconcileFormats hands a format to the renderer -- left it
+    // reading whatever was on the stack.
+    fInstancedByID( false ),
     fOwnsData( false ),
     fSorted( false )
 {

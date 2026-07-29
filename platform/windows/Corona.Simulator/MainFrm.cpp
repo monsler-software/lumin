@@ -206,13 +206,14 @@ void CMainFrame::OnSize(UINT nType, int cx, int cy)
     // Skip CFrameWnd version, which ruins our layout
 	CWnd::OnSize(nType, cx, cy);
 
-	// We need to repaint the menu bar when the window grows in size
-	// or else white space will be left behind.
-	DrawMenuBar();
+	// The frame window used to repaint its menu bar here, to clear the white
+	// space a grow left behind. It has no menu bar any more: the simulator's
+	// is Rtt::MenuBar, drawn by bgfx inside the window, and it is repainted by
+	// the frame it is drawn into.
 }
 
 // OnGetMinMaxInfo - store the current min and max tracking sizes for zoom limits
-// Max window sizes are limited by screen size, and min sizes are limited by menu size
+// Max window sizes are limited by screen size
 void CMainFrame::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
 {
 	// Increase the maximum size of the window to the biggest possible value.

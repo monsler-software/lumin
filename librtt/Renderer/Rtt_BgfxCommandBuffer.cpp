@@ -21,11 +21,18 @@
 #include "Renderer/Rtt_Texture.h"
 #include "Renderer/Rtt_Uniform.h"
 
+#include "Display/Rtt_ObjectHandle.h"
+
+#include "Corona/CoronaGraphics.h"
+
 #include "Core/Rtt_Assert.h"
+#include "Core/Rtt_Time.h"
+#include "Core/Rtt_Math.h"
 #include "Core/Rtt_String.h"
 
 #include <cstdio>
 #include <cstdlib>
+#include <string.h>
 
 // ----------------------------------------------------------------------------
 
@@ -188,9 +195,16 @@ BgfxCommandBuffer::GetVertexAttributes( VertexAttributeSupport & support ) const
 {
 	const bgfx::Caps* caps = bgfx::getCaps();
 
+	// One cap covers both rates here, so it stays the generous one bgfx allows;
+	// the tighter per-rate limits -- five per-vertex slots, five instance data
+	// vectors -- are reported where a shader that overruns them is built.
 	support.maxCount = bgfx::Attrib::Count;
 	support.hasInstancing = caps && 0 != ( caps->supported & BGFX_CAPS_INSTANCING );
-	support.hasDivisors = false; // bgfx exposes instancing through instance buffers, not divisors
+
+	// bgfx has no divisor of its own -- instance data is one block per instance
+	// -- but the effect of one is the same as repeating a value, which
+	// SetInstanceData does when it fills the buffer.
+	support.hasDivisors = support.hasInstancing;
 	support.hasPerInstance = support.hasInstancing;
 	support.suffix = "";
 }
@@ -448,15 +462,18 @@ BgfxCommandBuffer::BindInstancing( U32 count, Geometry::Vertex* instanceData )
 void
 BgfxCommandBuffer::BindVertexFormat( FormatExtensionList* extensionList, U16 fullCount, U16 vertexSize, U32 offset )
 {
-	// Only the instance layout is kept, and it is copied rather than pointed
-	// at: Corona builds this list on the stack for the call (see
-	// FormatExtensionList::ReconcileFormats) and it is gone by the time the
-	// draw happens.
-	//
-	// Per-vertex extension attributes would additionally mean a second vertex
-	// stream with a layout of its own, which this backend does not build yet;
-	// BgfxProgram logs that where the shader that wanted them is compiled,
-	// rather than once per draw from here.
+	// Everything here is copied rather than pointed at: Corona builds this list
+	// on the stack for the call (see FormatExtensionList::ReconcileFormats) and
+	// it is gone by the time the draw happens.
+
+	// Where in the geometry pool the format just described begins. A draw's own
+	// offset counts from there, and Corona rebases it to zero whenever it
+	// reconciles formats mid-pool.
+	fState.fVertexBaseOffset = offset;
+	fState.fVertexStride = vertexSize > 0 ? vertexSize : sizeof( Geometry::Vertex );
+
+	BgfxGeometry::BuildVertexLayout( fState.fVertexLayout, extensionList, fState.fVertexStride );
+
 	BgfxDrawState::InstanceLayout& layout = fState.fInstanceLayout;
 
 	memset( &layout, 0, sizeof( layout ) );
@@ -466,23 +483,12 @@ BgfxCommandBuffer::BindVertexFormat( FormatExtensionList* extensionList, U16 ful
 		return;
 	}
 
-	layout.fInstancedByID = extensionList->IsInstancedByID();
-	layout.fStride = BgfxProgram::GetInstanceStride( extensionList );
-
 	for ( U32 i = 0; i < extensionList->GetGroupCount(); ++i )
 	{
 		const FormatExtensionList::Group& group = extensionList->GetGroups()[i];
 
 		if ( !group.IsInstanceRate() )
 		{
-			continue;
-		}
-
-		if ( group.IsWindowed() )
-		{
-			// A windowed group hands each instance an overlapping run of the
-			// same array, which has no counterpart in a per-instance block.
-			Rtt_TRACE( ( "WARNING: the bgfx backend does not support windowed instance attributes\n" ) );
 			continue;
 		}
 
@@ -495,7 +501,25 @@ BgfxCommandBuffer::BindVertexFormat( FormatExtensionList* extensionList, U16 ful
 		BgfxDrawState::InstanceLayout::Group& copy = layout.fGroups[layout.fGroupCount++];
 
 		copy.fOffset = BgfxProgram::GetInstanceGroupOffset( extensionList, i );
-		copy.fSize = group.size;
+		copy.fDivisor = group.divisor;
+		copy.fWindowed = group.IsWindowed();
+		copy.fCount = group.count;
+
+		// The group's attributes all share one type when it is windowed -- each
+		// instance sees the same value under `count` names, one step apart.
+		const FormatExtensionList::Attribute* first = extensionList->GetAttributes() + i;
+
+		for ( U32 j = 0; j < extensionList->GetAttributeCount(); ++j )
+		{
+			if ( extensionList->FindGroup( j ) == i )
+			{
+				first = extensionList->GetAttributes() + j;
+				break;
+			}
+		}
+
+		copy.fAttributeSize = first->GetSize();
+		copy.fSize = copy.fWindowed ? copy.fAttributeSize * copy.fCount : group.size;
 	}
 }
 
@@ -511,12 +535,18 @@ BgfxCommandBuffer::SetInstanceData()
 	}
 
 	const BgfxDrawState::InstanceLayout& layout = fState.fInstanceLayout;
-	const U32 stride = layout.fStride;
+
+	// The stride and the instance-index question come from the program: only
+	// the effect's own extension list knows how wide an instance is and whether
+	// it asked for the index, and the reconciled list a draw carries describes
+	// the geometry's attributes instead.
+	const U32 stride = fState.fProgram ? fState.fProgram->GetInstanceStride() : 0;
+	const bool instancedByID = fState.fProgram && fState.fProgram->IsInstancedByID();
 
 	if ( 0 == stride )
 	{
-		// No vertex format was bound, so there is nothing to say about how an
-		// instance is laid out.
+		// The effect this draw uses is not instanced, so there is nothing to say
+		// about how an instance is laid out.
 		return false;
 	}
 
@@ -538,7 +568,8 @@ BgfxCommandBuffer::SetInstanceData()
 	//
 	// Geometry that lives on the GPU keeps each group in an array of its own on
 	// the geometry itself; the rest arrives through BindInstancing as one run
-	// with the groups end to end.
+	// with the groups end to end, each padded up to a whole Geometry::Vertex
+	// (see Renderer::InsertInstancing).
 	const U8* source = reinterpret_cast< const U8* >( fState.fInstanceData );
 
 	Geometry::ExtensionBlock* block = fState.fGeometrySource ? fState.fGeometrySource->GetExtensionBlock() : NULL;
@@ -553,32 +584,74 @@ BgfxCommandBuffer::SetInstanceData()
 			continue;
 		}
 
+		// A group's values are shared by `divisor` consecutive instances, so
+		// there are fewer of them than there are instances.
+		const U32 divisor = group.fDivisor > 0 ? group.fDivisor : 1;
+		const U32 valueCount = ( fState.fInstanceCount + divisor - 1 ) / divisor;
+
+		// One step through the source array. For a windowed group that is a
+		// single attribute, since consecutive instances see runs that overlap
+		// all but one value; otherwise it is the whole per-instance block.
+		const U32 sourceStride = group.fWindowed ? group.fAttributeSize : group.fSize;
+
+		// How much of the array the group occupies, which is where the next one
+		// starts.
+		const U32 sourceValues = group.fWindowed
+			? valueCount + group.fCount - 1
+			: valueCount;
+
 		const U8* groupSource = source;
-		U32 available = fState.fInstanceCount;
+		U32 available = sourceValues;
 
 		if ( storedData && storedData[i] )
 		{
 			const Array< U8 >& stored = *storedData[i];
 
 			groupSource = stored.ReadAccess();
-			available = U32( stored.Length() ) / group.fSize;
+			available = U32( stored.Length() ) / ( sourceStride > 0 ? sourceStride : 1 );
 		}
 
 		if ( groupSource )
 		{
-			for ( U32 instance = 0; instance < fState.fInstanceCount && instance < available; ++instance )
+			for ( U32 instance = 0; instance < fState.fInstanceCount; ++instance )
 			{
-				memcpy( buffer.data + instance * stride + group.fOffset, groupSource + instance * group.fSize, group.fSize );
+				const U32 value = instance / divisor;
+
+				// A windowed group copies the whole run at once, since the run
+				// is contiguous in the source; anything else is one block.
+				U32 bytes = group.fSize;
+
+				if ( value + bytes / ( sourceStride > 0 ? sourceStride : 1 ) > available )
+				{
+					// A source array shorter than the instance count asks for.
+					const U32 remaining = ( value < available ) ? ( available - value ) * sourceStride : 0;
+
+					bytes = remaining < bytes ? remaining : bytes;
+				}
+
+				if ( 0 == bytes )
+				{
+					break;
+				}
+
+				memcpy(
+					  buffer.data + instance * stride + group.fOffset
+					, groupSource + size_t( value ) * sourceStride
+					, bytes
+					);
 			}
 		}
 
 		if ( !storedData )
 		{
-			source += size_t( fState.fInstanceCount ) * group.fSize;
+			// Corona pads each group up to a whole vertex before the next one.
+			const U32 dataSize = sourceValues * sourceStride;
+
+			source += size_t( Geometry::Vertex::SizeInVertices( dataSize ) ) * sizeof( Geometry::Vertex );
 		}
 	}
 
-	if ( layout.fInstancedByID )
+	if ( instancedByID )
 	{
 		// Nothing to send but the index itself, which is what stands in for
 		// gl_InstanceID; see the note in BgfxProgram.
@@ -675,10 +748,29 @@ BgfxCommandBuffer::ApplyViewRects()
 
 	if ( fState.fScissorEnabled && fState.fScissor[2] > 0 && fState.fScissor[3] > 0 )
 	{
+		// Corona measures a scissor rect the way OpenGL does and the way its own
+		// projection produces: inside the viewport, from its bottom left. (See
+		// Renderer::SetScissor, which puts the rect through the view-projection
+		// matrix and then through ClipToWindow, whose result is scaled by the
+		// viewport's width and height.) bgfx counts from the top left of the
+		// whole target, so the rect is turned over inside the viewport and then
+		// offset to wherever that viewport sits.
+		//
+		// This is one calculation for both kinds of target. What is rendered
+		// into a texture is deliberately drawn upside down (see FlipsOffscreenY),
+		// so a row measured from the bottom of the image is at the same distance
+		// from the top of the target it is stored in -- the same turn, and
+		// ViewRectTop is what differs.
+		const int viewportHeight = fState.fViewport[3];
+		const int insideViewport = viewportHeight - ( fState.fScissor[1] + fState.fScissor[3] );
+
+		const int left = fState.fViewport[0] + fState.fScissor[0];
+		const int top = int( ViewRectTop( fState.fViewport[1], viewportHeight ) ) + insideViewport;
+
 		bgfx::setViewScissor(
 			  fState.fCurrentView
-			, U16( fState.fScissor[0] )
-			, ViewRectTop( fState.fScissor[1], fState.fScissor[3] )
+			, U16( left > 0 ? left : 0 )
+			, U16( top > 0 ? top : 0 )
 			, U16( fState.fScissor[2] )
 			, U16( fState.fScissor[3] )
 			);
@@ -722,20 +814,30 @@ BgfxCommandBuffer::SetScissorRegion( int x, int y, int width, int height )
 void
 BgfxCommandBuffer::SetMultisampleEnabled( bool enabled )
 {
-	// Multisampling is a property of the bgfx reset flags, chosen when the
-	// window is created, not a per-draw state.
+	// Two halves to this in bgfx: the backbuffer has to be built with samples,
+	// which is a reset flag the renderer owns, and each draw has to say it wants
+	// them, which is a state bit assembled with the rest.
+	fRenderer.SetMultisampleEnabled( enabled );
+
+	fState.fMultisampleEnabled = enabled;
 }
 
+// Corona issues a depth and a stencil clear just before the colour clear they
+// belong with (see Renderer::Clear), while a bgfx view takes one clear for all
+// three. So these are remembered and handed over together; anything still
+// pending when the frame ends belongs to a clear that never named a colour.
 void
 BgfxCommandBuffer::ClearDepth( Real depth )
 {
-	bgfx::setViewClear( fState.fCurrentView, BGFX_CLEAR_DEPTH, 0x000000ff, float( depth ), 0 );
+	fState.fPendingClearFlags |= BGFX_CLEAR_DEPTH;
+	fState.fPendingClearDepth = float( depth );
 }
 
 void
 BgfxCommandBuffer::ClearStencil( U32 stencil )
 {
-	bgfx::setViewClear( fState.fCurrentView, BGFX_CLEAR_STENCIL, 0x000000ff, 1.0f, U8( stencil ) );
+	fState.fPendingClearFlags |= BGFX_CLEAR_STENCIL;
+	fState.fPendingClearStencil = U8( stencil );
 }
 
 void
@@ -746,7 +848,19 @@ BgfxCommandBuffer::Clear( Real r, Real g, Real b, Real a )
 		| ( U32( b * 255.0f ) << 8 )
 		| U32( a * 255.0f );
 
-	bgfx::setViewClear( fState.fCurrentView, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, rgba, 1.0f, 0 );
+	fState.fPendingClearFlags |= BGFX_CLEAR_COLOR;
+
+	bgfx::setViewClear(
+		  fState.fCurrentView
+		, fState.fPendingClearFlags
+		, rgba
+		, fState.fPendingClearDepth
+		, fState.fPendingClearStencil
+		);
+
+	fState.fPendingClearFlags = 0;
+	fState.fPendingClearDepth = 1.0f;
+	fState.fPendingClearStencil = 0;
 
 	// A view is only cleared when something is submitted to it, and a frame
 	// that clears without drawing is legitimate.
@@ -754,16 +868,61 @@ BgfxCommandBuffer::Clear( Real r, Real g, Real b, Real a )
 }
 
 void
-BgfxCommandBuffer::ApplyState()
+BgfxCommandBuffer::FlushClear()
 {
-	U64 state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A;
+	if ( 0 == fState.fPendingClearFlags )
+	{
+		return;
+	}
+
+	// Depth or stencil asked for without a colour clear to carry them, which is
+	// what display.setDefault( "enableDepthInScene" ) alone produces.
+	bgfx::setViewClear(
+		  fState.fCurrentView
+		, fState.fPendingClearFlags
+		, 0
+		, fState.fPendingClearDepth
+		, fState.fPendingClearStencil
+		);
+
+	fState.fPendingClearFlags = 0;
+	fState.fPendingClearDepth = 1.0f;
+	fState.fPendingClearStencil = 0;
+
+	bgfx::touch( fState.fCurrentView );
+}
+
+// Everything a submit() is told about how to blend, test and write. bgfx keeps
+// none of this between submits, so it is assembled again for each one.
+U64
+BgfxCommandBuffer::DrawState( Geometry::PrimitiveType type ) const
+{
+	U64 state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | PrimitiveState( type ) | fState.fDepthState;
 
 	if ( fState.fBlendEnabled )
 	{
 		state |= fState.fBlendState;
 	}
 
-	bgfx::setState( state );
+	if ( fState.fMultisampleEnabled )
+	{
+		state |= BGFX_STATE_MSAA;
+
+		// Lines get bgfx's own antialiasing, which is what GL_LINE_SMOOTH gave
+		// the backend this replaces.
+		if ( Geometry::kLines == type || Geometry::kLineLoop == type )
+		{
+			state |= BGFX_STATE_LINEAA;
+		}
+	}
+
+	return state;
+}
+
+void
+BgfxCommandBuffer::ApplyState()
+{
+	bgfx::setState( DrawState( Geometry::kTriangles ) );
 }
 
 // bgfx has no triangle fan primitive, so a fan is drawn as an indexed triangle
@@ -824,6 +983,15 @@ BgfxCommandBuffer::SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType ty
 
 	const bool isFan = ( Geometry::kTriangleFan == type );
 
+	// Nothing has reconciled a vertex format yet, which is the case until the
+	// first draw of the first frame. bgfx layouts cannot be built before it is
+	// initialized, so this cannot be done when the state is constructed.
+	if ( 0 == fState.fVertexLayout.getStride() )
+	{
+		fState.fVertexLayout = BgfxGeometry::VertexLayout();
+		fState.fVertexStride = sizeof( Geometry::Vertex );
+	}
+
 	bgfx::ProgramHandle program = fState.fProgram->GetProgram( fState.fProgramVersion );
 
 	if ( !bgfx::isValid( program ) )
@@ -831,9 +999,26 @@ BgfxCommandBuffer::SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType ty
 		return;
 	}
 
+	// Geometry that carries per-vertex extension data has no buffers until the
+	// format the effect wants is known, which is now; see BgfxGeometry.
+	if ( fState.fGeometrySource && fState.fGeometrySource->GetStoredOnGPU() )
+	{
+		fState.fGeometry->EnsureBuffers( fState.fGeometrySource, fState.fVertexLayout );
+	}
+
 	if ( fState.fGeometry->StoredOnGPU() )
 	{
-		bgfx::setVertexBuffer( 0, fState.fGeometry->GetVertexBuffer(), offset, count );
+		// An indexed draw's offset and count address the index buffer (see
+		// Renderer::CheckAndInsertDrawCommand), so the vertex side takes the
+		// whole buffer and the indices pick out of it.
+		if ( indexed && !isFan )
+		{
+			bgfx::setVertexBuffer( 0, fState.fGeometry->GetVertexBuffer() );
+		}
+		else
+		{
+			bgfx::setVertexBuffer( 0, fState.fGeometry->GetVertexBuffer(), offset, count );
+		}
 
 		if ( isFan )
 		{
@@ -865,7 +1050,12 @@ BgfxCommandBuffer::SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType ty
 			return;
 		}
 
-		const bgfx::VertexLayout& layout = BgfxGeometry::VertexLayout();
+		// Whatever format was last reconciled, which is the stock vertex unless
+		// the effect declared per-vertex extension attributes: those are
+		// interleaved after each vertex, so the stride is larger and a draw's
+		// offset counts in those larger vertices from where the format began.
+		const bgfx::VertexLayout& layout = fState.fVertexLayout;
+		const U32 stride = layout.getStride();
 
 		// A frame has a fixed transient budget; past it, bgfx would hand back
 		// a short buffer and the draw would read past the end.
@@ -878,8 +1068,10 @@ BgfxCommandBuffer::SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType ty
 		bgfx::TransientVertexBuffer vertexBuffer;
 		bgfx::allocTransientVertexBuffer( &vertexBuffer, count, layout );
 
-		memcpy( vertexBuffer.data, vertexData + offset, count * sizeof( Geometry::Vertex ) );
+		const U8* source = reinterpret_cast< const U8* >( vertexData + fState.fVertexBaseOffset )
+			+ size_t( offset ) * stride;
 
+		memcpy( vertexBuffer.data, source, size_t( count ) * stride );
 
 		bgfx::setVertexBuffer( 0, &vertexBuffer );
 
@@ -914,12 +1106,7 @@ BgfxCommandBuffer::SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType ty
 		}
 	}
 
-	U64 state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | PrimitiveState( type );
-
-	if ( fState.fBlendEnabled )
-	{
-		state |= fState.fBlendState;
-	}
+	const U64 state = DrawState( type );
 
 	if ( fState.fInstanceCount > 0 )
 	{
@@ -988,6 +1175,12 @@ BgfxCommandBuffer::SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType ty
 	ApplyTextures();
 
 	bgfx::setState( state );
+
+	if ( BGFX_STENCIL_NONE != fState.fStencilFront || BGFX_STENCIL_NONE != fState.fStencilBack )
+	{
+		bgfx::setStencil( fState.fStencilFront, fState.fStencilBack );
+	}
+
 	bgfx::submit( fState.fCurrentView, program );
 }
 
@@ -1019,23 +1212,76 @@ BgfxCommandBuffer::GetCachedParam( CommandBuffer::QueryableParams param )
 void
 BgfxCommandBuffer::AddCommand( const CoronaCommand * command )
 {
-	// Custom commands from native plugins issue raw API calls, which have no
-	// meaning against bgfx.
-	Rtt_ASSERT_NOT_IMPLEMENTED();
+	// Kept on the renderer rather than here: Corona registers a command with
+	// whichever buffer is recording that frame and then alternates between the
+	// two, so a list of our own would be missing half of them.
+	fRenderer.GetCustomCommands().Append( command );
 }
 
+// A command a native plugin issued through CoronaRendererIssueCommand.
+//
+// The GL backend writes the payload into its command stream and runs the
+// reader a frame later, when that stream is replayed. This backend has no such
+// stream -- it hands work to bgfx as it arrives -- so the reader runs here,
+// which puts it at the same point in the draw order either way. The payload
+// still goes through the working buffer, because that is what a command's
+// writer and reader are given and what CoronaCommandBufferGetBaseAddress
+// reports offsets against.
 void
 BgfxCommandBuffer::IssueCommand( U16 id, const void * data, U32 size )
 {
-	Rtt_ASSERT_NOT_IMPLEMENTED();
+	OBJECT_HANDLE_SCOPE();
+
+	LightPtrArray< const CoronaCommand >& commands = fRenderer.GetCustomCommands();
+
+	if ( id >= commands.Length() )
+	{
+		Rtt_TRACE( ( "WARNING: a native plugin issued command %u, which was never registered\n", U32( id ) ) );
+		return;
+	}
+
+	U8 * buffer = Reserve( size );
+
+	OBJECT_HANDLE_STORE( CommandBuffer, commandBuffer, this );
+
+	commands[id]->writer( commandBuffer, buffer, data, size );
+
+	commands[id]->reader( commandBuffer, buffer, size );
+}
+
+U8 *
+BgfxCommandBuffer::Reserve( U32 size )
+{
+	const U32 bytesNeeded = fBytesUsed + size;
+
+	if ( bytesNeeded > fBytesAllocated )
+	{
+		const U32 doubleSize = fBytesUsed ? 2 * fBytesUsed : 4;
+		const U32 newSize = Max( bytesNeeded, doubleSize );
+
+		U8* newBuffer = new U8[newSize];
+
+		memcpy( newBuffer, fBuffer, fBytesUsed );
+		delete [] fBuffer;
+
+		fBuffer = newBuffer;
+		fBytesAllocated = newSize;
+	}
+
+	U8 * buffer = fBuffer + fBytesUsed;
+
+	fBytesUsed += size;
+
+	return buffer;
 }
 
 const unsigned char *
 BgfxCommandBuffer::GetBaseAddress() const
 {
-	// There is no recorded command stream to point into; see the note in the
-	// header on why this backend does not buffer.
-	return NULL;
+	// Not a recorded command stream -- see the note in the header -- but the
+	// working memory custom commands write their payloads into, which is what
+	// this is for.
+	return fBuffer;
 }
 
 bool
@@ -1056,9 +1302,22 @@ BgfxCommandBuffer::WriteNamedUniform( const char * uniformName, const void * dat
 Real
 BgfxCommandBuffer::Execute( bool measureGPU )
 {
+	// A depth or stencil clear that never found a colour clear to travel with.
+	FlushClear();
+
+	// Whatever the host draws over the finished content -- the simulator's
+	// menu bar. Last, so it is over everything, and before the frame ends, so
+	// it travels with the content it belongs over rather than a frame behind.
+	fRenderer.InvokeOverlay();
+
 	// bgfx has been receiving the work as it was issued; this ends the frame
 	// and hands it to bgfx's render thread.
 	bgfx::frame();
+
+	// Custom commands have run, so their payloads can be overwritten. The
+	// allocation itself is kept: the next frame's commands are the same size as
+	// this one's, near enough.
+	fBytesUsed = 0;
 
 
 	fRenderer.ResetViewIds();

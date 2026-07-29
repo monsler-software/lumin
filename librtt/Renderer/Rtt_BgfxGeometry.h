@@ -20,6 +20,8 @@
 namespace Rtt
 {
 
+class FormatExtensionList;
+
 // ----------------------------------------------------------------------------
 
 class BgfxGeometry : public GPUResource
@@ -37,9 +39,32 @@ class BgfxGeometry : public GPUResource
 		// first call, because bgfx layouts depend on the renderer being up.
 		static const bgfx::VertexLayout& VertexLayout();
 
+		// The same, plus whatever per-vertex extension attributes an effect
+		// declared. Corona interleaves those after each vertex rather than
+		// giving them a stream of their own (see Renderer::CopyExtendedVertexData
+		// and Geometry::ExtensionBlock::UpdateData), so they become attributes
+		// of this layout at a larger stride.
+		//
+		// `list` is the reconciled list Corona hands to BindVertexFormat, whose
+		// attributes are in the order the effect declared them: that is what
+		// decides the slot each one lands on, and BgfxProgram names them the
+		// same way. `vertexSize` is the full stride, extensions included.
+		static void BuildVertexLayout( bgfx::VertexLayout& layout, const FormatExtensionList* list, U32 vertexSize );
+
+		// How many per-vertex extension attributes the slots left over by the
+		// stock vertex and by bgfx's instance data can carry.
+		enum { kMaxVertexExtensionAttributes = 5 };
+
 		virtual void Create( CPUResource* resource );
 		virtual void Update( CPUResource* resource );
 		virtual void Destroy();
+
+		// Builds the buffers for geometry Corona keeps on the GPU, at the layout
+		// the draw about to happen needs. Geometry carrying per-vertex extension
+		// data cannot be built by Create(), which runs before any effect has
+		// said what that data looks like; this is called from the draw instead,
+		// and rebuilds if the layout has changed since.
+		void EnsureBuffers( Geometry* geometry, const bgfx::VertexLayout& layout );
 
 		// Geometry that Corona keeps on the GPU owns bgfx buffers, which these
 		// expose. Geometry that does not is uploaded per frame through bgfx's
@@ -53,6 +78,12 @@ class BgfxGeometry : public GPUResource
 	private:
 		bgfx::DynamicVertexBufferHandle fVertexBuffer;
 		bgfx::DynamicIndexBufferHandle fIndexBuffer;
+
+		// What the buffers were built for: bgfx fixes a buffer's layout and size
+		// when it is created, so a change in either means a new buffer.
+		U32 fLayoutHash;
+		U32 fVertexCapacity;
+		U32 fIndexCapacity;
 };
 
 // ----------------------------------------------------------------------------

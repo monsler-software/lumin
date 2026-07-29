@@ -172,7 +172,6 @@ class CSimulatorView : public CView
 		bool LoadSkinResources();
 		void GetFilePaths(LPCTSTR pattern, CStringArray& filepaths);
 		void OnRuntimeLoaded(Interop::RuntimeEnvironment& sender, const Interop::EventArgs& arguments);
-		void RemoveUnauthorizedMenuItemsFrom(CMenu* menuPointer);
 
 
 		CCoronaControlContainer mCoronaContainerControl;

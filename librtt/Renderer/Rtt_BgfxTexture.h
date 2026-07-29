@@ -15,6 +15,8 @@
 
 #include <bgfx/bgfx.h>
 
+#include <vector>
+
 // ----------------------------------------------------------------------------
 
 namespace Rtt
@@ -56,6 +58,14 @@ class BgfxTexture : public GPUResource
 		static U32 SamplerFlags( const Texture& texture );
 
 	private:
+		// How many mip levels this texture carries, given its size and what it
+		// is for.
+		U8 LevelsFor( const Texture& texture ) const;
+
+		// Builds level 0 plus the whole chain below it into one block, applying
+		// the channel swap if this texture needs one.
+		void BuildLevels( const U8* data, U16 width, U16 height, U8 levels, std::vector< U8 >& out ) const;
+
 		bgfx::TextureHandle fTexture;
 		U16 fWidth;
 		U16 fHeight;
@@ -64,6 +74,16 @@ class BgfxTexture : public GPUResource
 		// Creation flags, which accumulate as the texture turns out to be used
 		// as a render target or as the destination of a capture.
 		U64 fFlags;
+
+		// bgfx builds a mip chain when the texture is uploaded or never: it has
+		// no glGenerateMipmap. So the chain is generated on the CPU, and this is
+		// how many levels the texture was created with -- an update has to
+		// refill every one of them.
+		U8 fLevels;
+
+		// Set for a Corona format whose byte order this renderer has no texture
+		// format for, which BuildLevels corrects on the way in.
+		bool fSwapRedAndBlue;
 };
 
 // ----------------------------------------------------------------------------

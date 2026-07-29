@@ -146,6 +146,11 @@ set(LUMIN_BGFX_SOURCES
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxProgram.cpp"
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxRenderer.cpp"
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxTexture.cpp"
+
+	# The simulator's own chrome. Built with the backend because it draws
+	# through bgfx directly and needs the same C++20 that bx's headers do.
+	"${CORONA_ROOT}/librtt/UI/Rtt_BgfxUIDraw.cpp"
+	"${CORONA_ROOT}/librtt/UI/Rtt_MenuBar.cpp"
 )
 
 # Note: Rtt_BgfxShaderCompiler.cpp is deliberately not here. It belongs to
@@ -172,6 +177,10 @@ function(lumin_target_enable_bgfx TARGET_NAME)
 		"${BGFX_ROOT}/bgfx/include"
 		"${BGFX_ROOT}/bx/include"
 		"${BGFX_ROOT}/bimg/include"
+
+		# stb_truetype, which the chrome bakes its font atlas with. bgfx ships
+		# it already, so there is no reason to vendor a second copy.
+		"${BGFX_ROOT}/bgfx/3rdparty/stb"
 	)
 
 	target_link_libraries(${TARGET_NAME} bgfx shaderc-lib)

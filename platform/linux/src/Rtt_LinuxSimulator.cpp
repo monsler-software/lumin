@@ -14,6 +14,7 @@
 #include "Rtt_FileSystem.h"
 #include "Rtt_LuaContext.h"
 #include "Rtt_LinuxConsoleApp.h"
+#include "Rtt_LinuxMenuBar.h"
 #include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -487,7 +488,18 @@ namespace Rtt
 
 	void SolarSimulator::CreateMenu()
 	{
-		fMenu = new DlgMenu(fContext->GetAppName());
+		// Only ever a bgfx bar now, and there is nothing to put on it until
+		// there is one -- EnsureMenuBar calls back here once there is.
+		if (!fMenuBar.IsInitialized())
+		{
+			return;
+		}
+
+		std::vector<Menu> menus;
+
+		BuildSimulatorMenus(IsHomeScreen(fContext->GetAppName()), menus);
+
+		fMenuBar.SetMenus(menus);
 	}
 
 

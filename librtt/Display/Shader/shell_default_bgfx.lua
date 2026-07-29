@@ -41,6 +41,32 @@ local precision =
 #else
 #	define CORONA_GLOBAL static
 #endif
+
+// Hooks BgfxProgram fills in for whatever the kernels themselves declared:
+// varyings of their own, and per-vertex extension attributes. Both are things
+// bgfx has no keyword for -- what crosses the stages is fixed by the
+// $input/$output lists, and attributes come from bgfx's own named set -- so
+// the program splices those lists and defines these to match. Empty here,
+// which is what an effect that declares neither compiles with.
+#ifndef CORONA_KERNEL_VARYING_DECLS
+#	define CORONA_KERNEL_VARYING_DECLS
+#endif
+
+#ifndef CORONA_KERNEL_VARYING_WRITES
+#	define CORONA_KERNEL_VARYING_WRITES
+#endif
+
+#ifndef CORONA_KERNEL_VARYING_READS
+#	define CORONA_KERNEL_VARYING_READS
+#endif
+
+#ifndef CORONA_KERNEL_ATTRIB_DECLS
+#	define CORONA_KERNEL_ATTRIB_DECLS
+#endif
+
+#ifndef CORONA_KERNEL_ATTRIB_COPIES
+#	define CORONA_KERNEL_ATTRIB_COPIES
+#endif
 ]]
 
 shell.vertex =
@@ -121,6 +147,10 @@ uniform mat4 u_ViewProjectionMatrix;
 // that main() seeds before the kernel runs and hands to the $output after.
 CORONA_GLOBAL vec2 v_TexCoord;
 
+// Whatever this effect declared for itself, if anything.
+CORONA_KERNEL_VARYING_DECLS
+CORONA_KERNEL_ATTRIB_DECLS
+
 CORONA_GLOBAL vec2 CoronaAttribPosition;
 CORONA_GLOBAL vec3 CoronaAttribTexCoord;
 CORONA_GLOBAL vec4 CoronaAttribColor;
@@ -175,10 +205,15 @@ void main()
 		CoronaInstanceData4 = i_data4;
 	#endif
 
+	CORONA_KERNEL_ATTRIB_COPIES
+
 	P_POSITION vec2 position = VertexKernel( CoronaAttribPosition );
 
-	// After the kernel, since it may have overridden it.
+	// After the kernel, since it may have overridden it -- which is the whole
+	// point of a varying the kernel declared itself.
 	v_TexCoordIn = v_TexCoord;
+
+	CORONA_KERNEL_VARYING_WRITES
 
 	v_PositionIn = position;
 
@@ -238,6 +273,9 @@ CORONA_GLOBAL vec4 v_ColorScale;
 CORONA_GLOBAL vec4 v_UserData;
 CORONA_GLOBAL vec2 v_Position;
 
+// Whatever this effect declared for itself, if anything.
+CORONA_KERNEL_VARYING_DECLS
+
 #define CoronaColorScale( color ) ((color) * v_ColorScale)
 #define CoronaVertexUserData v_UserData
 
@@ -257,6 +295,8 @@ void main()
 	v_ColorScale = v_ColorScaleIn;
 	v_UserData = v_UserDataIn;
 	v_Position = v_PositionIn;
+
+	CORONA_KERNEL_VARYING_READS
 
 	P_COLOR vec4 result = FragmentKernel( v_TexCoord );
 

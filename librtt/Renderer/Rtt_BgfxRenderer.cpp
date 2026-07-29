@@ -89,8 +89,14 @@ NamedUniforms()
 BgfxRenderer::BgfxRenderer( Rtt_Allocator* allocator, const BgfxSurfaceParams& params )
 :	Super( allocator ),
 	fParams( params ),
+	fCustomCommands( allocator ),
 	fInitialized( false ),
+	fResetFlags( BGFX_RESET_VSYNC ),
+	fMultisampleEnabled( false ),
 	fNextViewId( 1 ), // view 0 is the window
+	fOverlayProc( NULL ),
+	fOverlayReleaseProc( NULL ),
+	fOverlayUserdata( NULL ),
 	fReadBackTexture( BGFX_INVALID_HANDLE ),
 	fReadBackWidth( 0 ),
 	fReadBackHeight( 0 ),
@@ -128,6 +134,11 @@ BgfxRenderer::~BgfxRenderer()
 
 		DestroyReadBackTexture();
 
+		if ( NULL != fOverlayReleaseProc )
+		{
+			fOverlayReleaseProc( fOverlayUserdata );
+		}
+
 		bgfx::shutdown();
 	}
 }
@@ -148,7 +159,7 @@ BgfxRenderer::Initialize()
 	init.type = bgfx::RendererType::Count;
 	init.resolution.width = fParams.fWidth;
 	init.resolution.height = fParams.fHeight;
-	init.resolution.reset = BGFX_RESET_VSYNC;
+	init.resolution.reset = fResetFlags;
 
 	init.platformData.nwh = fParams.fNativeWindowHandle;
 	init.platformData.ndt = fParams.fNativeDisplayType;
@@ -189,11 +200,51 @@ BgfxRenderer::SetSurfaceSize( U32 width, U32 height )
 
 	// Rebuilds the swapchain. bgfx defers the work to the next frame, so this
 	// is safe to call from the event loop.
-	bgfx::reset( width, height, BGFX_RESET_VSYNC );
+	bgfx::reset( width, height, fResetFlags );
 
 	// The window's view rect does not follow the reset, and views created for
 	// render targets set their own, so only view 0 needs updating here.
 	bgfx::setViewRect( 0, 0, 0, U16( width ), U16( height ) );
+}
+
+void
+BgfxRenderer::SetMultisampleEnabled( bool enabled )
+{
+	if ( enabled == fMultisampleEnabled )
+	{
+		return;
+	}
+
+	fMultisampleEnabled = enabled;
+
+	// The window's backbuffer only. bgfx can make a render target multisampled
+	// too, but such a texture cannot be blitted from or read back, which is what
+	// Corona does with every one it creates -- a snapshot samples it, and
+	// display.save reads it. The GL backend this replaces draws the same line:
+	// glEnable( GL_MULTISAMPLE ) affects whatever the window was created with,
+	// and its framebuffer objects have plain texture attachments.
+	//
+	// Four samples: the most every backend bgfx supports offers without
+	// question, and what "antialias = true" is understood to mean elsewhere.
+	// Corona has no way to ask for a particular count.
+	const U32 flags = enabled
+		? ( fResetFlags | BGFX_RESET_MSAA_X4 )
+		: ( fResetFlags & ~U32( BGFX_RESET_MSAA_X4 ) );
+
+	if ( flags == fResetFlags )
+	{
+		return;
+	}
+
+	fResetFlags = flags;
+
+	if ( fInitialized )
+	{
+		bgfx::reset( fParams.fWidth, fParams.fHeight, fResetFlags );
+
+		// A reset drops the window's view rect, which nothing else restores.
+		bgfx::setViewRect( 0, 0, 0, U16( fParams.fWidth ), U16( fParams.fHeight ) );
+	}
 }
 
 void
@@ -345,6 +396,61 @@ void
 BgfxRenderer::ResetViewIds()
 {
 	fNextViewId = 1;
+}
+
+void
+BgfxRenderer::SetOverlay( OverlayProc proc, OverlayReleaseProc releaseProc, void* userdata )
+{
+	fOverlayProc = proc;
+	fOverlayReleaseProc = releaseProc;
+	fOverlayUserdata = userdata;
+}
+
+void
+BgfxRenderer::InvokeOverlay()
+{
+	if ( !fInitialized || NULL == fOverlayProc )
+	{
+		return;
+	}
+
+	// The window's own size, not the runtime's viewport: the overlay draws
+	// over the whole window, including the strip above the content that the
+	// menu bar occupies.
+	fOverlayProc( fOverlayUserdata, AcquireViewId(), fParams.fWidth, fParams.fHeight );
+}
+
+void
+BgfxRenderer::RenderOverlayFrame( bool clear )
+{
+	if ( !fInitialized )
+	{
+		return;
+	}
+
+	if ( clear )
+	{
+		bgfx::setViewClear( 0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff );
+		bgfx::setViewRect( 0, 0, 0, U16( fParams.fWidth ), U16( fParams.fHeight ) );
+
+		// A view with nothing submitted to it is skipped, clear and all, so
+		// view 0 needs something to make the clear happen.
+		bgfx::touch( 0 );
+	}
+
+	InvokeOverlay();
+
+	bgfx::frame();
+
+	ResetViewIds();
+
+	if ( clear )
+	{
+		// Left as the content path expects to find it: the runtime sets its
+		// own clear when it draws, but only once it has something to clear
+		// for, and a black clear left behind here would fight it.
+		bgfx::setViewClear( 0, BGFX_CLEAR_NONE );
+	}
 }
 
 bool

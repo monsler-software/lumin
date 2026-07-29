@@ -16,11 +16,14 @@
 #include "Renderer/Rtt_Texture.h"
 #include "Renderer/Rtt_Uniform.h"
 
+#include "Core/Rtt_Array.h"
+
 #include <bgfx/bgfx.h>
 
 // ----------------------------------------------------------------------------
 
 struct Rtt_Allocator;
+struct CoronaCommand;
 
 namespace Rtt
 {
@@ -63,14 +66,62 @@ class BgfxRenderer : public Renderer
 		// on BgfxDrawState for why it is shared rather than per buffer.
 		BgfxDrawState& GetDrawState() { return fDrawState; }
 
+		// Commands a native plugin registered through
+		// CoronaRendererRegisterCommand. Shared for the same reason the draw
+		// state is: Corona registers a command with whichever buffer is
+		// recording that frame, then alternates, so a per-buffer list would
+		// leave the other one unable to run half the commands issued to it.
+		LightPtrArray< const CoronaCommand >& GetCustomCommands() { return fCustomCommands; }
+
 		// Render-to-texture takes a view id per target, handed out for the
 		// frame and reclaimed when it ends.
 		bgfx::ViewId AcquireViewId();
 		void ResetViewIds();
 
+		// Drawing the host puts over the finished frame -- the simulator's
+		// menu bar, and nothing else so far.
+		//
+		// It has to happen here rather than in the host's own loop because
+		// bgfx::frame() is what ends a frame, and the command buffer is what
+		// calls it: anything the host submitted afterwards would land in the
+		// next frame instead, a frame behind the content it belongs over. The
+		// view id passed in is freshly acquired, so it is above every view the
+		// content used and is drawn after all of them.
+		typedef void (*OverlayProc)( void* userdata, U16 view, U32 width, U32 height );
+
+		// Called before bgfx::shutdown(), so the overlay can let go of its
+		// textures and shaders while there is still a bgfx to give them back
+		// to. This is not only an end-of-run concern: opening a project tears
+		// the whole runtime down and builds another, so bgfx is shut down and
+		// reinitialized, and an overlay that kept its handles across that
+		// would be drawing with numbers that now mean something else.
+		typedef void (*OverlayReleaseProc)( void* userdata );
+
+		void SetOverlay( OverlayProc proc, OverlayReleaseProc releaseProc, void* userdata );
+
+		// Called by the command buffer, immediately before it ends the frame.
+		void InvokeOverlay();
+
+		// Submits a frame that is nothing but the overlay.
+		//
+		// A suspended runtime advances nothing and so ends no frames, which
+		// under bgfx means the window stops being presented at all -- and the
+		// menu bar has to keep working while suspended, since Resume is on it.
+		// The host calls this instead for as long as that lasts. `clear` paints
+		// the window black first, which is what suspending has always looked
+		// like; without it the swapchain shows whatever it happens to hold.
+		void RenderOverlayFrame( bool clear );
+
 		// The window's height in pixels, which the window's view rect is
 		// measured against.
 		U32 GetSurfaceHeight() const { return fParams.fHeight; }
+
+		// Multisampling is a property of the swapchain in bgfx, not a state a
+		// draw call can turn on, so asking for it rebuilds the backbuffer. The
+		// scene asks for this once a frame with the value it read from
+		// config.lua, so only the first one does any work.
+		void SetMultisampleEnabled( bool enabled );
+		bool GetMultisampleEnabled() const { return fMultisampleEnabled; }
 
 	protected:
 		virtual GPUResource* Create( const CPUResource* resource );
@@ -88,9 +139,19 @@ class BgfxRenderer : public Renderer
 
 		BgfxSurfaceParams fParams;
 		BgfxDrawState fDrawState;
+		LightPtrArray< const CoronaCommand > fCustomCommands;
 		bool fInitialized;
 
+		// What bgfx::reset was last given. Multisampling lives in here rather
+		// than in any per-draw state.
+		U32 fResetFlags;
+		bool fMultisampleEnabled;
+
 		bgfx::ViewId fNextViewId;
+
+		OverlayProc fOverlayProc;
+		OverlayReleaseProc fOverlayReleaseProc;
+		void* fOverlayUserdata;
 
 		bgfx::TextureHandle fReadBackTexture;
 		U16 fReadBackWidth;

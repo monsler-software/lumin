@@ -45,6 +45,11 @@ class BgfxFrameBufferObject : public GPUResource
 	private:
 		bgfx::FrameBufferHandle fFrameBuffer;
 		bgfx::ViewId fViewId;
+
+		// Corona can ask a framebuffer for depth and stencil bits (see
+		// FrameBufferObject::ExtraOptions). Unlike the colour attachment, which
+		// is a texture Corona owns, this one is created and destroyed here.
+		bgfx::TextureHandle fDepthStencil;
 };
 
 // ----------------------------------------------------------------------------

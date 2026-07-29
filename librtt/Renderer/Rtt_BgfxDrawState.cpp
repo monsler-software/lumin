@@ -38,6 +38,18 @@ BgfxDrawState::Reset()
 	fBlendState = 0;
 	fBlendEnabled = false;
 	fScissorEnabled = false;
+	fMultisampleEnabled = false;
+
+	fVertexStride = sizeof( Geometry::Vertex );
+	fVertexBaseOffset = 0;
+
+	fPendingClearFlags = 0;
+	fPendingClearDepth = 1.0f;
+	fPendingClearStencil = 0;
+
+	fDepthState = 0; // no depth test, no depth write
+	fStencilFront = BGFX_STENCIL_NONE;
+	fStencilBack = BGFX_STENCIL_NONE;
 
 	for ( U32 i = 0; i < 4; ++i )
 	{

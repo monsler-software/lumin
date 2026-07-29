@@ -10,6 +10,8 @@
 #ifndef _Rtt_BgfxCommandBuffer_H__
 #define _Rtt_BgfxCommandBuffer_H__
 
+#include "Core/Rtt_Array.h"
+
 #include "Renderer/Rtt_BgfxDrawState.h"
 #include "Renderer/Rtt_CommandBuffer.h"
 #include "Renderer/Rtt_RendererCapabilities.h"
@@ -116,6 +118,10 @@ class BgfxCommandBuffer : public CommandBuffer
 		// carries its own, and anything not set is dropped.
 		void ApplyState();
 		void ApplyTextures();
+
+		// The bgfx state bits a submit() carries: blending, the primitive type
+		// and whatever depth state is in force.
+		U64 DrawState( Geometry::PrimitiveType type ) const;
 		void SubmitDraw( U32 offset, U32 count, Geometry::PrimitiveType type, bool indexed );
 
 		// Re-applies the viewport and scissor to the current view, which is what
@@ -142,6 +148,16 @@ class BgfxCommandBuffer : public CommandBuffer
 		// Builds a GPU resource now if Corona's create queue has not reached it
 		// yet; see the definition for why this backend needs that.
 		static void EnsureCreated( CPUResource* resource );
+
+		// Hands bgfx the clears Corona has asked for since the last one. A view
+		// takes a single clear, so the depth and stencil clears that precede a
+		// colour clear are gathered up and applied together.
+		void FlushClear();
+
+		// Space in the working buffer a custom command writes its payload into.
+		// Reallocating invalidates earlier pointers, which is why plugins are
+		// told to keep offsets from GetBaseAddress rather than pointers.
+		U8* Reserve( U32 size );
 
 		BgfxRenderer& fRenderer;
 

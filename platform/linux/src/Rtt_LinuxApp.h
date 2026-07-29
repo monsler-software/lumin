@@ -30,6 +30,7 @@
 #include "Rtt_LinuxUtils.h"
 #include "Rtt_LinuxConsoleApp.h"
 #include "Rtt_LinuxDisplayObject.h"
+#include "UI/Rtt_MenuBar.h"
 #include <sys/inotify.h>
 
 enum sdl
@@ -73,7 +74,11 @@ enum sdl
 	OnMouseCursorVisible,
 	OnSetCursor,
 	OnRuntimeError,
-	OnPreferencesChanged
+	OnPreferencesChanged,
+
+	// Suspend and Resume are one menu item whose label follows the state, so
+	// they are one command too.
+	OnSuspendResume
 };
 
 namespace Rtt
@@ -121,7 +126,29 @@ namespace Rtt
 		void RemoveDisplayObject(LinuxDisplayObject* obj);
 		NativeAlertRef ShowNativeAlert(const char* title, const char* msg, const char** buttonLabels, U32 numButtons, LuaResource* resource);
 		virtual void StartConsole() {}
+
+		// Fills the menu bar in for whatever is loaded now. Called again
+		// whenever that changes -- between the welcome screen and a project,
+		// and when suspending flips the label on one of the items.
 		virtual void CreateMenu() {}
+
+		// Draws the bar over the finished frame. Registered with the bgfx
+		// renderer, which calls it as the last thing in a frame.
+		static void RenderOverlay(void* userdata, U16 view, U32 width, U32 height);
+
+		// Lets the bar go before bgfx does, which is every time the runtime is
+		// torn down -- opening a project does that.
+		static void ReleaseOverlay(void* userdata);
+
+		// Runs the command a menu item or an accelerator names.
+		static void OnMenuCommand(void* userdata, int command);
+
+		MenuBar& GetMenuBar() { return fMenuBar; }
+
+		// Gives the bar first refusal on an event. Returns true if it took it,
+		// in which case nothing else may see it: a click that opens a menu is
+		// not also a touch on the content underneath.
+		bool ProcessMenuBarEvent(const SDL_Event& e);
 		const std::string& GetAppPath() const { return fContext->GetAppPath(); }
 		const std::string& GetAppName() const { return fContext->GetAppName(); }
 		const std::string& GetSaveFolder() const { return fContext->GetSaveFolder(); }
@@ -143,6 +170,10 @@ namespace Rtt
 		virtual void SolarEvent(const SDL_Event& e) {}
 		bool DispathNativeObjectsEvent(const SDL_Event& e);
 
+		// Brings the bar up the first time there is a bgfx to draw it with,
+		// which is not until the runtime has loaded and made a renderer.
+		void EnsureMenuBar();
+
 		smart_ptr<SolarAppContext> fContext;
 		SDL_Window* fWindow;
 		SDL_GLContext fGLcontext;
@@ -154,7 +185,11 @@ namespace Rtt
 
 		// GUI
 		ImGuiContext* fImCtx;
-		smart_ptr<DlgMenu> fMenu;
+		MenuBar fMenuBar;
+
+		// Set once bringing the bar up has failed, so it is not attempted
+		// again every frame.
+		bool fMenuBarFailed;
 		smart_ptr<Window> fDlg;
 		bool fActivityIndicator;
 		std::vector<LinuxDisplayObject*> fNativeObjects;

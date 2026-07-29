@@ -35,7 +35,11 @@ namespace Rtt
 		bool IsRunningOnSimulator() override { return true; }
 		bool Init() override;
 
-		virtual int GetMenuHeight() const { return 19; }		// hack
+		// How much of the window the bar takes off the top, which the content
+		// below it is laid out against. A constant rather than something
+		// measured: the window is sized -- and this is subtracted -- long
+		// before bgfx exists to measure a bar with.
+		virtual int GetMenuHeight() const { return MenuBar::GetHeight(); }
 
 	private:
 

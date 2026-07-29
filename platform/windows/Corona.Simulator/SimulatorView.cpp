@@ -1393,96 +1393,13 @@ void CSimulatorView::OnWindowViewAs( UINT nID )
 }
 
 // OnUpdateWindowViewAs - check mark for the currently displayed skin
-// (gets called when "Window" menu is clicked as well as when "View As" menu is shown)
+//
+// This used to build the "View As" submenu on first show, walking the skin
+// list and hanging a "Borderless" submenu off it. The menu is gone -- the
+// simulator's bar is Rtt::MenuBar, drawn by bgfx -- so all that is left is the
+// check mark, for whatever else routes these command ids.
 void CSimulatorView::OnUpdateWindowViewAs( CCmdUI *pCmdUI )
 {
-	int skinID = 0;
-
-	CMainFrame *pFrameWindowPointer = (CMainFrame*)GetParentFrame();
-	if (pFrameWindowPointer != NULL)
-	{
-		CMenu *pMainMenu = pFrameWindowPointer->GetMenu();
-		CMenu *pViewMenu = pMainMenu->GetSubMenu(2);  // position of "View" submenu in main menu
-		CMenu *pViewAsMenu = pViewMenu->GetSubMenu(3);  // position of "View As" submenu in "View" menu
-
-		// Create the skins menu if we haven't already
-		if (pViewAsMenu == NULL || pViewAsMenu->GetMenuItemCount() == 1)
-		{
-			CMenu borderlessMenu;
-			borderlessMenu.CreateMenu();
-			CMenu *pBorderlessMenu = &borderlessMenu;
-			CMenu *pParentMenu = pViewAsMenu;
-
-#if _DEBUG
-			Rtt_TRACE(( "CSimulatorView::OnUpdateWindowViewAs: populating View As menu\n" ));
-#endif
-
-			// Remove the placeholder which is needed to trigger the population of the otherwise
-			// empty menu (because it's a popup, "View As" can't have an ID and thus can't trigger)
-			pViewAsMenu->RemoveMenu(0, MF_BYPOSITION);
-
-			const char *skinName = NULL;
-			const char *deviceType = NULL;
-			const char *lastDeviceType = NULL;
-			long skinCount = 0;
-			long itemCount = 0;
-			long viewAsItemCount = 0;
-			while ((skinName = Rtt::TargetDevice::NameForSkin(skinCount)) != NULL)
-			{
-				CString itemTitle;
-				int skinWidth = Rtt::TargetDevice::WidthForSkin(skinCount);
-				int skinHeight = Rtt::TargetDevice::HeightForSkin(skinCount);
-				deviceType = Rtt::TargetDevice::DeviceTypeForSkin(skinCount);
-
-				// Note that this programmatic conceit depends on "borderless-*" device types being sorted to the end of the list
-				// (see Rtt_TargetDevice.cpp)
-				if (pParentMenu == pViewAsMenu && lastDeviceType != NULL && strncmp(deviceType, "borderless-", 11) == 0)
-				{
-					// Separator
-					pViewAsMenu->InsertMenu(itemCount, MF_BYPOSITION|MFT_SEPARATOR, 0, _T("-"));
-					++itemCount;
-
-					pViewAsMenu->InsertMenu(itemCount, MF_BYPOSITION | MF_POPUP, (UINT_PTR)pBorderlessMenu->GetSafeHmenu(), _T("Borderless"));
-					++itemCount;
-
-					viewAsItemCount = itemCount + 1;
-					lastDeviceType = deviceType;
-					itemCount = 0;
-					pParentMenu = pBorderlessMenu;
-				}
-
-				itemTitle.Format(_T("%S\t%dx%d"), skinName, skinWidth, skinHeight);
-
-				pParentMenu->InsertMenu(itemCount, MF_BYPOSITION, ID_VIEWAS_BEGIN + skinCount, itemTitle);
-
-				// If the device type changes, insert a separator in the menu
-				if (lastDeviceType != NULL && strcmp(deviceType, lastDeviceType) != 0)
-				{
-					pParentMenu->InsertMenu(itemCount, MF_BYPOSITION|MFT_SEPARATOR, 0, _T("-"));
-					++itemCount;
-				}
-
-				lastDeviceType = deviceType;
-
-				++skinCount;
-				++itemCount;
-			}
-			if (pParentMenu == pBorderlessMenu)
-			{
-				borderlessMenu.Detach();
-			}
-			else
-			{
-				bool uhOh = true;
-			}
-
-			// Separator
-			pViewAsMenu->InsertMenu(viewAsItemCount, MF_BYPOSITION|MFT_SEPARATOR, 0, _T("-"));
-			++viewAsItemCount;
-			pViewAsMenu->InsertMenu(viewAsItemCount, MF_BYPOSITION, ID_VIEWAS_CUSTOMDEVICE, _T("Custom Device..."));
-		}
-	}
-
 	if (pCmdUI->m_nID == ID_VIEWAS_CUSTOMDEVICE)
 		pCmdUI->SetCheck( Rtt::TargetDevice::kCustomSkin == m_nSkinId );
 	else
@@ -2248,46 +2165,11 @@ void CSimulatorView::RunCoronaProject(CString& projectPath)
 		applicationPointer->LoadZoomFromRegistry();
 	}
 	
-	// If we're opening the "home screen" project, then show the home menu.
-	// Otherwise, show the device simulator menu.
-	auto frameWindowPointer = (CMainFrame*)GetParentFrame();
-	if (frameWindowPointer)
-	{
-		// Only replace the menu if it needs changing. If we're already showing the right menu, do nothing.
-		UINT nextMenuId = mIsShowingInternalScreen ? IDR_HOME_MENU : IDR_SIMULATOR_MENU;
-		auto lastMenuPointer = frameWindowPointer->GetMenu();
-		MENUINFO menuInfo{};
-		menuInfo.cbSize = sizeof(menuInfo);
-		menuInfo.fMask = MIM_MENUDATA;
-		lastMenuPointer->GetMenuInfo(&menuInfo);
-		if (menuInfo.dwMenuData != nextMenuId)
-		{
-			// Load a new menu from our resource table.
-			CMenu newMenu;
-			newMenu.LoadMenu(mIsShowingInternalScreen ? IDR_HOME_MENU : IDR_SIMULATOR_MENU);
+	// The simulator's menu bar used to be swapped here, between a welcome
+	// screen menu and a fuller one for a loaded project. Both are gone: the
+	// bar is Rtt::MenuBar now, drawn by bgfx over the window, and it rebuilds
+	// itself from the same distinction without the frame window's help.
 
-			// Assign the loaded menu's resource ID to its info struct.
-			// This is an optimization. We don't want to reload the menu everytime we start/stop a Corona project.
-			memset(&menuInfo, 0, sizeof(menuInfo));
-			menuInfo.cbSize = sizeof(menuInfo);
-			menuInfo.fMask = MIM_MENUDATA;
-			if (newMenu.GetMenuInfo(&menuInfo))
-			{
-				menuInfo.dwMenuData = nextMenuId;
-				newMenu.SetMenuInfo(&menuInfo);
-			}
-
-			// Remove items from the "Build" menu that the end-user is not authorized to use.
-			RemoveUnauthorizedMenuItemsFrom(&newMenu);
-
-			// Replace the window's menu.
-			frameWindowPointer->SetMenu(&newMenu);
-			frameWindowPointer->m_hMenuDefault = newMenu.GetSafeHmenu();
-			lastMenuPointer->DestroyMenu();
-			newMenu.Detach();
-		}
-	}
-	
 	// Do not load the project if the machine does not meet the minimum OpenGL requirements.
 	if ((projectPath.GetLength() > 0) && (ValidateOpenGL() == false))
 	{
@@ -2635,66 +2517,6 @@ void CSimulatorView::GetRecentDocs(Rtt::LightPtrArray<Rtt::RecentProjectInfo> *l
 	}
 }
 
-/// <summary>
-///  <para>Removes menu items that the end-user should not have access to from the given menu.</para>
-///  <para>For example, the "Build\HTML5" menu item will be removed unless the registry has "ShowWebBuild" set.</para>
-/// </summary>
-/// <param name="menuPointer">Pointer to the menu to be scanned for items to be removed. Can be null.</param>
-void CSimulatorView::RemoveUnauthorizedMenuItemsFrom(CMenu* menuPointer)
-{
-	// Validate.
-	if (!menuPointer)
-	{
-		return;
-	}
-
-	// Fetch a pointer to the main application object.
-	CSimulatorApp *applicationPointer = (CSimulatorApp*)AfxGetApp();
-	if (!applicationPointer)
-	{
-		return;
-	}
-
-	// Traverse the menu hierarchy for key menu items that should be removed, depending on the user's access level.
-	// Note: We must iterate backwards since the below deletes menu items by index.
-	for (int menuItemIndex = menuPointer->GetMenuItemCount() - 1; menuItemIndex >= 0; menuItemIndex--)
-	{
-		// If the next menu item is a submenu, then traverse its submenu items recursively.
-		auto subMenuPointer = menuPointer->GetSubMenu(menuItemIndex);
-		if (subMenuPointer)
-		{
-			// Traverse the submenu's items.
-			RemoveUnauthorizedMenuItemsFrom(subMenuPointer);
-
-			// If the submenu no longer contains any menu items, then remove the submenu.
-			if (subMenuPointer->GetMenuItemCount() <= 0)
-			{
-				menuPointer->DeleteMenu(menuItemIndex, MF_BYPOSITION);
-				continue;
-			}
-		}
-
-		// Remove this menu item if the user does not have access.
-		auto menuItemId = menuPointer->GetMenuItemID(menuItemIndex);
-		if (menuItemId >= 0)
-		{
-			bool shouldRemove = false;
-			switch (menuItemId)
-			{
-				case ID_BUILD_FOR_NXS:
-					shouldRemove = ! applicationPointer->ShouldShowNXBuildDlg();
-					break;
-				case ID_BUILD_FOR_LINUX:
-					shouldRemove = ! applicationPointer->ShouldShowLinuxBuildDlg();
-					break;
-			}
-			if (shouldRemove)
-			{
-				menuPointer->DeleteMenu(menuItemIndex, MF_BYPOSITION);
-			}
-		}
-	}
-}
 
 // DegressToRFType - Convert rotation in degress to RotateFlipType
 Gdiplus::RotateFlipType DegreesToRFType( int rotation )

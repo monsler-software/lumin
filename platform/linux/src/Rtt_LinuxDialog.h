@@ -82,19 +82,6 @@ namespace Rtt
 		ImGui::FileBrowser fileDialog;
 	};
 
-	struct DlgMenu : public ref_counted
-	{
-		DlgMenu(const std::string& appName);
-
-		void Draw();
-		int GetHeight() const { return fMenuSize.y;	}
-
-	private:
-
-		bool fIsMainMenu;
-		ImVec2 fMenuSize;
-	};
-
 	struct DlgNewProject : public Window
 	{
 		DlgNewProject(const std::string& title, int w, int h);

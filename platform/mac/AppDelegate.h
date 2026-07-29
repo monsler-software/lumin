@@ -52,13 +52,20 @@ namespace Rtt
 	class SimulatorAnalytics;
 }
 
-@interface AppDelegate : NSObject <NSMenuDelegate,NSAlertDelegate,GLViewDelegate, CLLocationManagerDelegate
+@interface AppDelegate : NSObject <NSAlertDelegate,GLViewDelegate, CLLocationManagerDelegate
 #if !defined( Rtt_WEB_PLUGIN )
 	,NSUserNotificationCenterDelegate
 #endif
 	>
 {
 	Rtt::MacSimulator* fSimulator;
+
+	// The extensions found under Extensions/, and the record of which are
+	// running. This used to be the Window menu itself, each item holding its
+	// ExtensionParams as a represented object; the menu is gone, so the list
+	// it stood for is kept here.
+	NSMutableArray* fExtensions;
+
 	NSString* fAppPath;
 	Rtt::SimulatorOptions fOptions;
 
@@ -208,7 +215,6 @@ namespace Rtt
 -(IBAction)showProjectSandbox:(id)sender;
 - (IBAction) showProjectFiles:(id)sender;
 - (IBAction) clearProjectSandbox:(id)sender;
-- (BOOL) setClearProjectSandboxTitle;
 
 -(BOOL)setSkinForTitle:(NSString*)title;
 

@@ -67,6 +67,14 @@ class BgfxProgram : public GPUResource
 		// at its own offset inside its group.
 		enum { kInstanceVectorSize = 16, kMaxInstanceVectors = 5 };
 
+		// What the effect this program was built from says about instancing.
+		// Taken from the shader's own extension list rather than from the
+		// reconciled one a draw carries: only the effect knows whether it wanted
+		// the instance index, and how wide an instance's data is.
+		bool IsInstancedByID() const { return fInstancedByID; }
+		U32 GetInstanceStride() const { return fInstanceStride; }
+
+		static U32 GetInstanceGroupSize( const FormatExtensionList* list, U32 groupIndex );
 		static U32 GetInstanceGroupOffset( const FormatExtensionList* list, U32 groupIndex );
 		static U32 GetInstanceStride( const FormatExtensionList* list );
 
@@ -86,6 +94,8 @@ class BgfxProgram : public GPUResource
 		// should look like one.
 		bool Build( Program& program, Program::Version version, VersionData& data );
 
+		void ReadInstancing( Program& program );
+
 		VersionData fData[Program::kNumVersions];
 
 		// The source a variant is compiled from, kept so that variants can be
@@ -96,6 +106,10 @@ class BgfxProgram : public GPUResource
 		// Set for a variant whose compile failed, so a draw that keeps asking
 		// for it does not keep re-running the compiler.
 		bool fBuildFailed[Program::kNumVersions];
+
+		// Read off the effect's own extension list when the program is built.
+		bool fInstancedByID;
+		U32 fInstanceStride;
 };
 
 // ----------------------------------------------------------------------------

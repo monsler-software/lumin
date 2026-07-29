@@ -31,7 +31,13 @@
 #include "Rtt_HTTPClient.h"
 #include "Rtt_LinuxKeyListener.h"
 #include "Rtt_BitmapUtils.h"
+#include "Rtt_LinuxMenuBar.h"
+#include "default.ttf.h"
 #include <curl/curl.h>
+
+#if defined( Rtt_USE_BGFX )
+	#include "Renderer/Rtt_BgfxRenderer.h"
+#endif
 #include <utility>		// for pairs
 #include "lua.h"
 #include "lauxlib.h"
@@ -57,6 +63,7 @@ namespace Rtt
 		: fResourceDir(resourceDir)
 		, fWindow(NULL)
 		, fImCtx(NULL)
+		, fMenuBarFailed(false)
 		, fActivityIndicator(false)
 	{
 		fMouse = new LinuxMouseListener();
@@ -235,7 +242,7 @@ namespace Rtt
 	void SolarApp::GetWindowSize(int* w, int* h)
 	{
 		SDL_GetWindowSize(fWindow, w, h);
-		*h = -GetMenuHeight();
+		*h -= GetMenuHeight();
 	}
 
 	bool SolarApp::LoadApp(const string& path)
@@ -292,6 +299,12 @@ namespace Rtt
 
 			if (fDlg)
 				fDlg->ProcessEvent(evt);
+
+			// Before anything else looks at it: a click on the bar, or
+			// anywhere while a menu is open, belongs to the bar and to nothing
+			// underneath it.
+			if (ProcessMenuBarEvent(evt))
+				continue;
 
 			if (evt.type == SDL_QUIT)
 				return false;
@@ -484,6 +497,28 @@ namespace Rtt
 			//int advance_time = (int)(Rtt_AbsoluteToMilliseconds(Rtt_GetAbsoluteTime()) - start_time);
 			//	Rtt_Log("event %x, advance time %d\n", event.type, advance_time);
 		}
+
+#if defined( Rtt_USE_BGFX )
+		// Not from the drawing, for the reason given below: a still scene
+		// never reaches it, and the bar would never come up at all.
+		EnsureMenuBar();
+
+		// The bar rides along in the runtime's frame, and the runtime renders
+		// only when its own content changed -- a still scene presents nothing
+		// for as long as it stays still. A menu opening, or the highlight
+		// following the cursor, is not something the runtime knows about, so
+		// it has to be told, or the bar catches up with the mouse only
+		// whenever the content next happens to redraw.
+		//
+		// This belongs in the event loop rather than in the drawing, which is
+		// itself only reached from a frame the runtime decided to render: a
+		// still scene would never get as far as asking.
+		if (GetRuntime() != NULL && fMenuBar.NeedsRedraw())
+		{
+			GetRuntime()->GetDisplay().Invalidate();
+		}
+#endif
+
 		return true;
 	}
 
@@ -502,31 +537,59 @@ namespace Rtt
 
 	void SolarApp::Run()
 	{
-		int fps = fContext->GetFPS();
-		float frameDuration = 1000.0f / fps;
+		// When the next frame is due. Kept as a running deadline rather than
+		// being derived from "now" at the end of each pass, because the loop no
+		// longer runs once per frame: input wakes it up in between, and a frame
+		// rate measured from whenever that last happened is not a frame rate.
+		U64 nextFrameTime = Rtt_AbsoluteToMilliseconds(Rtt_GetAbsoluteTime());
 
 		// main app loop
 		while (1)
 		{
-			U64 start_time = Rtt_AbsoluteToMilliseconds(Rtt_GetAbsoluteTime());
+			// Read per pass rather than once: the fps a project asks for is only
+			// known after it has loaded, and the welcome screen's is not the one
+			// whatever gets opened from it will run at.
+			const int fps = fContext->GetFPS();
+			const U64 frameDuration = U64(1000.0f / Max(fps, 1));
 
+			// Events are taken as soon as they arrive, whether or not a frame is
+			// due. Everything the menu bar reacts to -- the highlight following
+			// the cursor, a menu opening -- is settled here, so waiting for the
+			// frame boundary to so much as look at a click was pure latency: at
+			// the welcome screen's frame rate, most of what the bar's lag was.
 			if (!PollEvents())
 				break;
 
-			if (fConsole)
-				fConsole->Draw();
+			U64 now = Rtt_AbsoluteToMilliseconds(Rtt_GetAbsoluteTime());
 
-			fContext->advance();
+			// Advancing is what the frame rate governs, and only it: the runtime
+			// has no clock of its own here, and every call is a frame -- one more
+			// enterFrame, one more step of every transition. Running it whenever
+			// the mouse moved would simply make the project play faster.
+			if (now >= nextFrameTime)
+			{
+				if (fConsole)
+					fConsole->Draw();
 
-			if (fDlg)
-				fDlg->Draw();
+				fContext->advance();
 
-			int advance_time = (int)(Rtt_AbsoluteToMilliseconds(Rtt_GetAbsoluteTime()) - start_time);
-			//			Rtt_Log("advance_time %d\n", advance_time);
+				if (fDlg)
+					fDlg->Draw();
 
-			// Don't hog the CPU.
-			int sleep_time = Max(frameDuration - advance_time, 1.0f);		// sleep for at least 1ms
-			this_thread::sleep_for(chrono::milliseconds(sleep_time));
+				now = Rtt_AbsoluteToMilliseconds(Rtt_GetAbsoluteTime());
+
+				// A frame that overran is a frame that overran; the ones it ate
+				// into are not run back to back afterwards to make up for it.
+				nextFrameTime = Max(nextFrameTime + frameDuration, now);
+			}
+
+			// Don't hog the CPU -- but wake the moment there is something to
+			// react to. SDL_WaitEventTimeout with no event to fill in leaves what
+			// woke it on the queue, for the PollEvents at the top of the next
+			// pass to take.
+			const U64 wait = nextFrameTime > now ? nextFrameTime - now : 1;
+
+			SDL_WaitEventTimeout(NULL, int(wait));
 		}
 	}
 
@@ -541,16 +604,190 @@ namespace Rtt
 		fLogData.append(buf, len);
 	}
 
+	void SolarApp::EnsureMenuBar()
+	{
+#if defined( Rtt_USE_BGFX )
+		if (fMenuBar.IsInitialized() || fMenuBarFailed || GetRuntime() == NULL)
+		{
+			return;
+		}
+
+		// bgfx has to exist before the bar can bake a font or compile a
+		// shader, and it does not until the runtime has built its renderer --
+		// which is why this is here rather than in Init.
+		BgfxRenderer& renderer = static_cast<BgfxRenderer&>(GetRuntime()->GetDisplay().GetRenderer());
+
+		if (!fMenuBar.Initialize(default_ttf, sizeof(default_ttf)))
+		{
+			// Without a bar the simulator is harder to use but still runs, and
+			// every command on it has a keyboard shortcut.
+			//
+			// Remembered, because this is reached once a frame: bringing the
+			// bar up compiles two shaders, and retrying that every frame would
+			// cost far more than the bar it is failing to produce.
+			fMenuBarFailed = true;
+
+			Rtt_LogException("WARNING: the simulator's menu bar could not be created\n");
+			return;
+		}
+
+		fMenuBar.SetCommandHandler(&SolarApp::OnMenuCommand, this);
+
+		renderer.SetOverlay(&SolarApp::RenderOverlay, &SolarApp::ReleaseOverlay, this);
+
+		CreateMenu();
+#endif
+	}
+
+	void SolarApp::ReleaseOverlay(void* userdata)
+	{
+		// The menus themselves are kept: they are plain data, and the next
+		// runtime's bar wants the same ones. Only the bgfx handles go.
+		static_cast<SolarApp*>(userdata)->fMenuBar.Finalize();
+	}
+
+	void SolarApp::RenderOverlay(void* userdata, U16 view, U32 width, U32 height)
+	{
+		SolarApp* self = static_cast<SolarApp*>(userdata);
+
+		// A modal dialog is still Dear ImGui's, and it takes over: the bar
+		// greys out and stops responding until the dialog goes away, which is
+		// what the ImGui::BeginDisabled around the old bar did.
+		self->fMenuBar.SetEnabled(self->fDlg == NULL);
+
+		self->fMenuBar.Render(view, width, height);
+	}
+
+	void SolarApp::OnMenuCommand(void* userdata, int command)
+	{
+		SolarApp* self = static_cast<SolarApp*>(userdata);
+
+		if (sdl::OnSuspendResume == command)
+		{
+			if (self->IsSuspended())
+			{
+				self->Resume();
+			}
+			else
+			{
+				self->Pause();
+			}
+
+			// The item's label is the state, so the menus are rebuilt rather
+			// than re-read.
+			self->CreateMenu();
+
+			return;
+		}
+
+		// Everything else goes back through the event queue, which is where
+		// the commands were already handled from: a menu item and the dialog
+		// button that does the same thing end up in the same place.
+		PushEvent(command);
+	}
+
+	bool SolarApp::ProcessMenuBarEvent(const SDL_Event& e)
+	{
+		if (!fMenuBar.IsInitialized() || fDlg != NULL)
+		{
+			return false;
+		}
+
+		// The console is a window of its own, and its events arrive in the
+		// same queue. Every case below carries a window id in the same place,
+		// but SDL_QUIT and the user events do not, so this cannot be hoisted
+		// out of the switch.
+		const Uint32 windowID = SDL_GetWindowID(fWindow);
+
+		switch (e.type)
+		{
+		case SDL_MOUSEMOTION:
+			return e.motion.windowID == windowID
+				&& fMenuBar.OnMouseMove(e.motion.x, e.motion.y);
+
+		case SDL_MOUSEBUTTONDOWN:
+			return e.button.windowID == windowID && SDL_BUTTON_LEFT == e.button.button
+				&& fMenuBar.OnMouseDown(e.button.x, e.button.y);
+
+		case SDL_MOUSEBUTTONUP:
+			return e.button.windowID == windowID && SDL_BUTTON_LEFT == e.button.button
+				&& fMenuBar.OnMouseUp(e.button.x, e.button.y);
+
+		case SDL_MOUSEWHEEL:
+			// Nothing on the bar scrolls, but a wheel event while a menu is
+			// open should not reach the content behind it either.
+			return e.wheel.windowID == windowID && fMenuBar.IsOpen();
+
+		case SDL_KEYDOWN:
+		{
+			if (e.key.windowID != windowID)
+			{
+				return false;
+			}
+
+			if (SDLK_ESCAPE == e.key.keysym.sym && fMenuBar.IsOpen())
+			{
+				fMenuBar.Close();
+				return true;
+			}
+
+			const int command = CommandForKeyEvent(e.key, IsHomeScreen(GetAppName()));
+
+			if (command >= 0)
+			{
+				fMenuBar.Close();
+
+				OnMenuCommand(this, command);
+
+				return true;
+			}
+
+			return false;
+		}
+
+		case SDL_WINDOWEVENT:
+			// A menu left open when the window loses focus would still be
+			// showing when it comes back, over content that has moved on.
+			if (e.window.windowID == windowID && SDL_WINDOWEVENT_FOCUS_LOST == e.window.event)
+			{
+				fMenuBar.Close();
+			}
+			return false;
+
+		default:
+			return false;
+		}
+	}
+
 	void SolarApp::RenderGUI()
 	{
+#if defined( Rtt_USE_BGFX )
+		if (GetRuntime() == NULL)
+		{
+			return;
+		}
+
+		// While the runtime is running, its own frame carries the bar: the
+		// renderer's overlay hook draws it as the last thing before the frame
+		// is submitted. A suspended runtime submits no frames at all, though,
+		// so the bar -- which is how it gets resumed -- has to be given one.
+		if (IsSuspended())
+		{
+			fMenuBar.SetStatusText("Suspended");
+
+			BgfxRenderer& renderer = static_cast<BgfxRenderer&>(GetRuntime()->GetDisplay().GetRenderer());
+
+			renderer.RenderOverlayFrame(true);
+		}
+		else
+		{
+			fMenuBar.SetStatusText(NULL);
+		}
+
+		return;
+#else
 		if (fImCtx == NULL)
 			return;
-
-#if defined( Rtt_USE_BGFX )
-		// No GL context and no ImGui renderer backend under bgfx; the UI is
-		// stepped so its state stays consistent, but nothing is drawn.
-		return;
-#endif
 
 		SDL_GL_MakeCurrent(fWindow, fGLcontext);
 		ImGui::SetCurrentContext(fImCtx);
@@ -576,14 +813,6 @@ namespace Rtt
 			}
 		}
 
-		// disable main menu if there is a popup window 
-		if (fMenu)
-		{
-			ImGui::BeginDisabled(fDlg != NULL);
-			fMenu->Draw();
-			ImGui::EndDisabled();
-		}
-
 		for (int i = 0; i < fNativeObjects.size(); i++)
 		{
 			fNativeObjects[i]->Draw();
@@ -599,6 +828,7 @@ namespace Rtt
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+#endif
 	}
 
 	void SolarApp::OnIconized()

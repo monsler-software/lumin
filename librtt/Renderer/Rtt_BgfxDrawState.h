@@ -80,19 +80,51 @@ struct BgfxDrawState
 	{
 		enum { kMaxGroups = 8 };
 
-		U32 fStride;
 		U32 fGroupCount;
-		bool fInstancedByID;
 
 		struct Group
 		{
 			U32 fOffset; // into an instance's block
-			U32 fSize;
+			U32 fSize;   // bytes one instance takes from this group
+
+			// A group's values are shared by `fDivisor` consecutive instances,
+			// so instance i reads value i / fDivisor.
+			U32 fDivisor;
+
+			// A "windowed" group gives each instance a sliding run of fCount
+			// values from one array rather than a block of its own: instance i
+			// sees values i, i + 1, ... i + fCount - 1, each fAttributeSize
+			// bytes. The values overlap, so they are expanded per instance when
+			// the buffer is filled.
+			bool fWindowed;
+			U32 fCount;
+			U32 fAttributeSize;
+
+			// Where this group's values start in the run Corona hands over
+			// through BindInstancing, which packs one group after another with
+			// each padded up to a whole Geometry::Vertex.
+			U32 fSourceOffset;
+
+			// How many values the source holds, so a short array cannot be read
+			// past the end.
+			U32 fSourceValueCount;
 		}
 		fGroups[kMaxGroups];
 	};
 
 	InstanceLayout fInstanceLayout;
+
+	// The vertex stream a draw reads from, which is Geometry::Vertex on its own
+	// unless the effect declared per-vertex extension attributes: those are
+	// interleaved after each vertex (see Renderer::CopyExtendedVertexData), so
+	// the stride grows and the layout gains their attributes.
+	//
+	// Built by BindVertexFormat, which is also where Corona says how far into
+	// the geometry pool the format it just described begins -- a draw's own
+	// offset counts from there.
+	bgfx::VertexLayout fVertexLayout;
+	U32 fVertexStride;
+	U32 fVertexBaseOffset; // in whole Geometry::Vertex units
 
 	// Instancing, gathered before a draw and consumed by it. The data itself is
 	// Corona's, and lives until the draw is submitted.
@@ -102,6 +134,23 @@ struct BgfxDrawState
 	U64 fBlendState;
 	bool fBlendEnabled;
 	bool fScissorEnabled;
+	bool fMultisampleEnabled;
+
+	// A bgfx view is cleared by one setViewClear, so the depth and stencil
+	// clears Corona issues just before a colour clear (see Renderer::Clear) are
+	// gathered here and applied together. Anything still pending when the frame
+	// ends belongs to a clear that never named a colour, and is flushed then.
+	U16 fPendingClearFlags;
+	float fPendingClearDepth;
+	U8 fPendingClearStencil;
+
+	// Depth and stencil test state, as bgfx state bits. Corona's own drawing
+	// never turns these on -- it has no depth to speak of -- but a framebuffer
+	// can be asked for a depth or stencil attachment, and a native plugin can
+	// drive them through a custom command.
+	U64 fDepthState;
+	U32 fStencilFront;
+	U32 fStencilBack;
 };
 
 // ----------------------------------------------------------------------------
