@@ -47,6 +47,8 @@ class ProgramHeader;
 class Renderer;
 class Runtime;
 class Scene;
+class Physics3D;
+class Scene3D;
 class ShaderFactory;
 class SpritePlayer;
 class StageObject;
@@ -180,6 +182,15 @@ class Display
                                         bool crop_object_to_screen_bounds,
                                         const ColorUnion *optionalBackgroundColor,
                                         RGBA *optional_output_color );
+
+        // Where the 3D objects in and under `object` land on screen, in content
+        // units. False when there are none, or when none of them could be
+        // projected -- see Object3D::GetScreenBounds -- and `bounds` is then
+        // left alone.
+        //
+        // A capture works from the object's stage bounds, and a 3D object has
+        // none, so without this a capture of one has nothing to render into.
+        bool GetScreenBounds3D( DisplayObject& object, Rect& bounds ) const;
 
     public:
         virtual void UnloadResources();
@@ -362,6 +373,20 @@ class Display
 		    Scene& GetScene() { return *fScene; }
 		    const Scene& GetScene() const { return *fScene; }
 
+			// The 3D state -- active camera, lights, ambient -- that render.*
+			// objects share. Created on first use, since most projects have no
+			// 3D in them, and owned here rather than by the render library so
+			// that it outlives every display object that refers to it.
+			Scene3D& GetScene3D();
+
+			// The 3D physics world, created on first use as the 3D scene is, and
+			// for the same reason: most projects have none.
+			Physics3D& GetPhysics3D();
+
+			// Whether one exists, so the per-frame step can be skipped without
+			// creating a world just to ask.
+			bool HasPhysics3D() const { return fPhysics3D != NULL; }
+
         U8 GetDrawMode() const { return fDrawMode; }
         void SetDrawMode( U8 newValue ) { fDrawMode = newValue; }
 
@@ -417,6 +442,8 @@ class Display
         SpritePlayer *fSpritePlayer;
         TextureFactory *fTextureFactory;
         Scene *fScene;
+        Scene3D *fScene3D;
+        Physics3D *fPhysics3D;
 		    ProfilingState *fProfilingState;
 
 		// TODO: Refactor data structure portions out

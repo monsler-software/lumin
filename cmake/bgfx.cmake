@@ -186,6 +186,7 @@ set(LUMIN_BGFX_SHADER_INCLUDE_DIR "${BGFX_ROOT}/bgfx/src")
 # Backend sources, appended to whichever Solar2D target includes this.
 
 set(LUMIN_BGFX_SOURCES
+	"${CORONA_ROOT}/librtt/Renderer/Rtt_Bgfx3DPipeline.cpp"
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxCommandBuffer.cpp"
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxDrawState.cpp"
 	"${CORONA_ROOT}/librtt/Renderer/Rtt_BgfxFrameBufferObject.cpp"

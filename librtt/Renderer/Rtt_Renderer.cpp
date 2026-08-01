@@ -558,6 +558,23 @@ Renderer::PopMaskCount()
 }
 
 void
+Renderer::Insert3D( const Draw3DCommand& command )
+{
+    // The same debug-visualisation cap Insert() honours, counted the same way
+    // so that stepping through a frame steps through 2D and 3D together.
+    if( fInsertionCount++ > fInsertionLimit )
+    {
+        return;
+    }
+
+    Rtt_ASSERT( fBackCommandBuffer != NULL );
+
+    FlushBatch();
+
+    fBackCommandBuffer->Draw3D( command );
+}
+
+void
 Renderer::Insert( const RenderData* data, const ShaderData * shaderData )
 {
     // For debug visualization, the number of insertions may be limited

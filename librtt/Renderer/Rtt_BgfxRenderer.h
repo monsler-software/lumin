@@ -10,6 +10,7 @@
 #ifndef _Rtt_BgfxRenderer_H__
 #define _Rtt_BgfxRenderer_H__
 
+#include "Renderer/Rtt_Bgfx3DPipeline.h"
 #include "Renderer/Rtt_BgfxDrawState.h"
 #include "Renderer/Rtt_Renderer.h"
 #include "Renderer/Rtt_BgfxSurfaceParams.h"
@@ -71,6 +72,10 @@ class BgfxRenderer : public Renderer
 		// on BgfxDrawState for why it is shared rather than per buffer.
 		BgfxDrawState& GetDrawState() { return fDrawState; }
 
+		// The 3D pipeline, shared between the two command buffers for the same
+		// reason the draw state is.
+		Bgfx3DPipeline& Get3DPipeline() { return f3DPipeline; }
+
 		// Commands a native plugin registered through
 		// CoronaRendererRegisterCommand. Shared for the same reason the draw
 		// state is: Corona registers a command with whichever buffer is
@@ -81,6 +86,28 @@ class BgfxRenderer : public Renderer
 		// Render-to-texture takes a view id per target, handed out for the
 		// frame and reclaimed when it ends.
 		bgfx::ViewId AcquireViewId();
+
+		// The view the 3D shadow pass renders into, reserved rather than acquired.
+		//
+		// bgfx draws views in ascending id order and the window is view 0, so a
+		// shadow pass given an ordinary id would run after the frame that needs to
+		// read it. The reserved id is hoisted in front of everything by
+		// SetupShadowViewOrder, which leaves the relative order of every other view
+		// exactly as it was.
+		bgfx::ViewId GetShadowViewId() const;
+
+		// Puts a view into submission order, which is what Corona's back-to-front
+		// drawing needs; see the call in Initialize().
+		static void SetSequentialViewMode( bgfx::ViewId view );
+
+		// Puts the shadow view first. Cheap enough to call whenever the shadow pass
+		// is used, and idempotent.
+		void SetupShadowViewOrder();
+
+		// SetupShadowViewOrder, at most once a frame. bgfx keeps a view order until
+		// something replaces it, but Corona hands the ids out again from the start
+		// every frame, so the order is reasserted rather than assumed.
+		void EnsureShadowViewOrder();
 		void ResetViewIds();
 
 		// Drawing the host puts over the finished frame -- the simulator's
@@ -120,6 +147,7 @@ class BgfxRenderer : public Renderer
 		// The window's height in pixels, which the window's view rect is
 		// measured against.
 		U32 GetSurfaceHeight() const { return fParams.fHeight; }
+		U32 GetSurfaceWidth() const { return fParams.fWidth; }
 
 		// Multisampling is a property of the swapchain in bgfx, not a state a
 		// draw call can turn on, so asking for it rebuilds the backbuffer. The
@@ -149,6 +177,7 @@ class BgfxRenderer : public Renderer
 
 		BgfxSurfaceParams fParams;
 		BgfxDrawState fDrawState;
+		Bgfx3DPipeline f3DPipeline;
 		LightPtrArray< const CoronaCommand > fCustomCommands;
 		bool fInitialized;
 
@@ -162,6 +191,10 @@ class BgfxRenderer : public Renderer
 		// Whether this frame has already said it ran out of them; cleared when
 		// the numbering restarts.
 		bool fViewIdsExhausted;
+
+		// Whether the shadow pass has been put at the head of the view order this
+		// frame. Cleared with the view ids.
+		bool fShadowOrderSet;
 
 		OverlayProc fOverlayProc;
 		OverlayReleaseProc fOverlayReleaseProc;

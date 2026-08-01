@@ -39,6 +39,7 @@
 namespace Rtt
 {
 
+
 // ----------------------------------------------------------------------------
 
 size_t
@@ -1195,6 +1196,52 @@ BgfxCommandBuffer::DrawIndexed( U32 offset, U32 count, Geometry::PrimitiveType t
 	SubmitDraw( offset, count, type, true );
 }
 
+void
+BgfxCommandBuffer::Draw3D( const Draw3DCommand& command )
+{
+	// Submitted into the view the 2D content is using, not a view of its own.
+	// bgfx draws views in id order, so a separate view would put every 3D
+	// object either wholly behind or wholly in front of every 2D one, and the
+	// display list's ordering -- which is what lets a 3D object sit inside a
+	// group between two 2D ones -- would stop meaning anything.
+	// The shadow pass is the exception: it fills a map that the shading pass then
+	// reads, so it cannot share a view with the content it shadows. It gets an id of
+	// its own, hoisted ahead of every other one.
+	if ( command.fCastsShadows )
+	{
+		fRenderer.EnsureShadowViewOrder();
+	}
+
+	// The camera's aspect ratio comes from what is being drawn into, which for a
+	// capture, snapshot or canvas is the target's texture and not the window: a
+	// capture of a region shaped differently from the window would otherwise
+	// stretch the scene sideways.
+	U32 targetWidth = fRenderer.GetSurfaceWidth();
+	U32 targetHeight = fRenderer.GetSurfaceHeight();
+
+	if ( 0 != fState.fCurrentView && fState.fViewport[2] > 0 && fState.fViewport[3] > 0 )
+	{
+		targetWidth = U32( fState.fViewport[2] );
+		targetHeight = U32( fState.fViewport[3] );
+	}
+
+	fRenderer.Get3DPipeline().Draw(
+		  command
+		, fState.fCurrentView
+		, fRenderer.GetShadowViewId()
+		, targetWidth
+		, targetHeight
+		);
+
+	// bgfx keeps no binding state between submits, but Corona's renderer does:
+	// it tracks what it last bound and skips rebinding anything unchanged. The
+	// 3D submit above bound its own geometry, program and uniforms, so what
+	// Corona believes is bound is now wrong, and the next 2D draw would submit
+	// with whatever the 3D pass left set. Forgetting the bindings makes that
+	// draw send them again.
+	fRenderer.GetDrawState().ReleaseObjectBindings();
+}
+
 S32
 BgfxCommandBuffer::GetCachedParam( CommandBuffer::QueryableParams param )
 {
@@ -1320,6 +1367,10 @@ BgfxCommandBuffer::Execute( bool measureGPU )
 
 
 	fRenderer.ResetViewIds();
+
+	// The shadow view's target and clear are set once per frame, by the first
+	// caster that needs them, so what said they were set has to be cleared here.
+	fRenderer.Get3DPipeline().BeginFrame();
 
 	// Any view a render target held is stale once the numbering restarts, so
 	// the next frame starts aimed at the window again.

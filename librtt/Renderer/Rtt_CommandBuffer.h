@@ -10,6 +10,7 @@
 #ifndef _Rtt_CommandBuffer_H__
 #define _Rtt_CommandBuffer_H__
 
+#include "Renderer/Rtt_Draw3D.h"
 #include "Renderer/Rtt_Geometry_Renderer.h"
 #include "Renderer/Rtt_Program.h"
 #include "Renderer/Rtt_RenderTypes.h"
@@ -115,6 +116,13 @@ class CommandBuffer
         virtual void Draw( U32 offset, U32 count, Geometry::PrimitiveType type ) = 0;
         virtual void DrawIndexed( U32 offset, U32 count, Geometry::PrimitiveType type ) = 0;
         virtual S32 GetCachedParam( CommandBuffer::QueryableParams param ) = 0;
+
+        // Draw one 3D object. Not pure virtual, and does nothing by default:
+        // the 3D pipeline is bgfx-only, and the GL and Vulkan buffers cannot
+        // service it. Content that uses render.* on those backends draws its 2D
+        // as usual and its 3D not at all, which is a better failure than
+        // refusing to run the project.
+        virtual void Draw3D( const Draw3DCommand& command ) {}
 
         virtual void AddCommand( const CoronaCommand * command ) = 0;
         virtual void IssueCommand( U16 id, const void * data, U32 size ) = 0;

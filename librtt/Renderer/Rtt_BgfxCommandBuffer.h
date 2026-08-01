@@ -97,6 +97,7 @@ class BgfxCommandBuffer : public CommandBuffer
 		virtual void Clear( Real r, Real g, Real b, Real a );
 		virtual void Draw( U32 offset, U32 count, Geometry::PrimitiveType type );
 		virtual void DrawIndexed( U32 offset, U32 count, Geometry::PrimitiveType type );
+		virtual void Draw3D( const Draw3DCommand& command );
 		virtual S32 GetCachedParam( CommandBuffer::QueryableParams param );
 
 		virtual void AddCommand( const CoronaCommand * command );

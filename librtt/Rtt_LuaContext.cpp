@@ -14,6 +14,8 @@
 
 #include "Display/Rtt_Display.h"
 #include "Display/Rtt_LuaLibDisplay.h"
+#include "Display/Rtt_LuaLibPhysics3D.h"
+#include "Display/Rtt_LuaLibRender.h"
 #include "Display/Rtt_LuaLibGraphics.h"
 #include "Display/Rtt_StageObject.h"
 #include "Rtt_Archive.h"
@@ -884,6 +886,8 @@ LuaContext::InitializeRttCore( lua_State* L, Runtime *runtime )
 	// Init built-in libs
 	LuaLibSystem::Initialize( L );
 	LuaLibDisplay::Initialize( L, runtime->GetDisplay() );
+	LuaLibRender3D::Initialize( L, runtime->GetDisplay() );
+	LuaLibPhysics3D::Initialize( L, runtime->GetDisplay() );
 	LuaLibMedia::Initialize( L );
 #if defined ( Rtt_USE_ALMIXER )
 	LuaLibOpenAL::Initialize( L );

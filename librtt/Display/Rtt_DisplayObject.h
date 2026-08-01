@@ -32,6 +32,7 @@ class DisplayObjectExtensions;
 class LuaProxyVTable;
 class LuaUserdataProxy;
 class MEvent;
+class Object3D;
 class Runtime;
 class StageObject;
 class Uniform;
@@ -221,6 +222,12 @@ class DisplayObject : public MDrawable, public MLuaProxyable
     public:
         virtual GroupObject* AsGroupObject();
 		virtual const GroupObject* AsGroupObject() const;
+
+		// Non-NULL only for objects created through the render.* module. The
+		// same downcast-without-RTTI arrangement as AsGroupObject above, and
+		// for the same reason: Corona builds with RTTI off, so a type test has
+		// to be something the type itself answers.
+		virtual Object3D* AsObject3D();
 
     public:
         //! Local-space to Content-space.

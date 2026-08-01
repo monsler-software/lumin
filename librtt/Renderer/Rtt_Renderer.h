@@ -10,6 +10,7 @@
 #ifndef _Rtt_Renderer_H__
 #define _Rtt_Renderer_H__
 
+#include "Renderer/Rtt_Draw3D.h"
 #include "Renderer/Rtt_Geometry_Renderer.h"
 #include "Renderer/Rtt_RenderData.h"
 #include "Renderer/Rtt_CPUResource.h"
@@ -155,6 +156,17 @@ class Renderer
 		// Generate the minimum set of commands needed to ensure that the given
 		// RenderData is properly drawn on the next call to Render().
 		void Insert( const RenderData* data, const ShaderData * shaderData = NULL );
+
+		// Draw a 3D object at this point in the display list.
+		//
+		// Separate from Insert() rather than another kind of RenderData because
+		// none of what Insert does applies: there is no batching to join (each
+		// mesh has its own buffers on the GPU), no 2D vertex format to
+		// reconcile, and no shared program state to diff against. What it does
+		// share is ordering, so any 2D batch still being accumulated is flushed
+		// first -- otherwise 2D geometry submitted before this object would be
+		// drawn after it.
+		void Insert3D( const Draw3DCommand& command );
 
         // Render all data added since the last call to swap(). It is both safe
         // and expected that Render() is called while another thread is adding

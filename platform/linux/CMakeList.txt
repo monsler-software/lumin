@@ -84,6 +84,14 @@ include_directories (
 	${CORONA_ROOT}/platform/shared
 	${CORONA_ROOT}/external/Box2D
 	${CORONA_ROOT}/external/b2Separator-cpp
+	# cgltf, the glTF reader render.newModel() uses. Header-only, and vendored
+	# with bgfx rather than on its own, which is why it lives down there.
+	${CORONA_ROOT}/external/bgfx/bgfx/3rdparty/cgltf
+	# stb_image, which Rtt_Texture3D uses to decode a material's maps. Vendored
+	# with bimg; bimg's own decoder target is deliberately not linked, for the
+	# reason given at the top of Rtt_Texture3D.cpp.
+	${CORONA_ROOT}/external/bgfx/bimg/3rdparty
+	${CORONA_ROOT}/external/box3d/include
   ${CORONA_ROOT}/external/smoothpolygon
   ${CORONA_ROOT}/modules/simulator
   ${CORONA_ROOT}/platform
@@ -457,6 +465,18 @@ SET( SOLAR2D_SOURCES
 		${CORONA_ROOT}/librtt/Display/Rtt_ImageSheetUserdata.cpp
 		${CORONA_ROOT}/librtt/Display/Rtt_LineObject.cpp
 		${CORONA_ROOT}/librtt/Display/Rtt_LuaLibDisplay.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_LuaLibRender.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_Camera3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_Material3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_Mesh3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_Model3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_ModelObject3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_Object3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_Scene3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_LuaLibPhysics3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_Physics3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_ShaderEffect3D.cpp
+		${CORONA_ROOT}/librtt/Display/Rtt_Texture3D.cpp
 		${CORONA_ROOT}/librtt/Display/Rtt_LuaLibGraphics.cpp
 		${CORONA_ROOT}/librtt/Display/Rtt_ObjectHandle.cpp
 		${CORONA_ROOT}/librtt/Display/Rtt_OpenPath.cpp
@@ -1038,8 +1058,16 @@ target_compile_definitions( Solar2DBuilder PUBLIC
 	Rtt_LINUX_ENV ALMIXER_COMPILE_WITHOUT_SDL SOUND_SUPPORTS_WAV SOUND_SUPPORTS_MPG123 SOUND_SUPPORTS_OGG
 	OPT_GENERIC HAVE_STRERROR NO_REAL ENABLE_ALMIXER_THREADS LINUX_LIB) 
 
-target_link_libraries(Solar2D	dl GL z pthread openal freetype png jpeg crypto curl SDL2 ${LIBCEF})
-target_link_libraries(Solar2DSimulator	dl GL z pthread openal freetype png jpeg crypto curl SDL2 ${LIBCEF})
+# Box3D, which backs physics3d.* the way Box2D backs physics.*.
+#
+# Added as a subdirectory rather than by listing its sources: it needs C17 and
+# its own SIMD flags, which its own build sets on the target, and its samples and
+# tests gate themselves on being the top-level project so nothing but the library
+# is built here.
+add_subdirectory(${CORONA_ROOT}/external/box3d ${CMAKE_BINARY_DIR}/box3d EXCLUDE_FROM_ALL)
+
+target_link_libraries(Solar2D	dl GL z pthread openal freetype png jpeg crypto curl SDL2 box3d ${LIBCEF})
+target_link_libraries(Solar2DSimulator	dl GL z pthread openal freetype png jpeg crypto curl SDL2 box3d ${LIBCEF})
 
 # Optional bgfx backend; a no-op unless -DLUMIN_BGFX=ON.
 include(${CORONA_ROOT}/cmake/bgfx.cmake)
@@ -1052,7 +1080,9 @@ endif()
 target_link_options(Solar2D BEFORE PUBLIC -export-dynamic)
 target_link_options(Solar2DSimulator BEFORE PUBLIC -export-dynamic)
 
-target_link_libraries(Solar2DBuilder dl GL z pthread openal freetype png jpeg crypto curl SDL2)
+# box3d here too: Solar2DBuilder compiles the same librtt sources, so it needs the
+# physics symbols even though it never steps a world.
+target_link_libraries(Solar2DBuilder dl GL z pthread openal freetype png jpeg crypto curl SDL2 box3d)
 
 # build template
 add_custom_target(create_template ALL 

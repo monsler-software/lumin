@@ -87,6 +87,7 @@ BgfxRenderer::BgfxRenderer( Rtt_Allocator* allocator, const BgfxSurfaceParams& p
 	fMultisampleEnabled( false ),
 	fNextViewId( 1 ), // view 0 is the window
 	fViewIdsExhausted( false ),
+	fShadowOrderSet( false ),
 	fOverlayProc( NULL ),
 	fOverlayReleaseProc( NULL ),
 	fOverlayUserdata( NULL ),
@@ -123,6 +124,8 @@ BgfxRenderer::~BgfxRenderer()
 		// dereferences null -- so everything holding a bgfx handle has to be
 		// released while we are still the most-derived object.
 		DestroyGPUResources();
+
+		f3DPipeline.Release();
 
 		DestroyUniforms();
 
@@ -170,6 +173,12 @@ BgfxRenderer::Initialize()
 	fInitialized = true;
 
 	bgfx::setViewRect( 0, 0, 0, U16( fParams.fWidth ), U16( fParams.fHeight ) );
+
+	// Corona draws back to front and expects what it submits last to land on
+	// top. Left to itself bgfx reorders a view's draws by program and state to
+	// save the GPU work, which for painter's-order 2D content means a fill
+	// drawn first can end up over the images drawn after it.
+	SetSequentialViewMode( 0 );
 
 	CreateUniforms();
 
@@ -382,11 +391,79 @@ BgfxRenderer::GetNamedUniform( const char* name, U32 sizeInBytes )
 	return handle;
 }
 
+// bgfx forgets a view's mode when the frame ends only in the sense that ids are
+// handed out again; the mode itself sticks to the id, so setting it once per
+// acquisition is cheap and covers ids reused across frames.
+void
+BgfxRenderer::SetSequentialViewMode( bgfx::ViewId view )
+{
+	bgfx::setViewMode( view, bgfx::ViewMode::Sequential );
+}
+
+bgfx::ViewId
+BgfxRenderer::GetShadowViewId() const
+{
+	const bgfx::Caps* caps = bgfx::getCaps();
+	const U32 limit = caps ? caps->limits.maxViews : 256;
+
+	// The last id bgfx allows, which AcquireViewId below stops one short of so the
+	// two never collide.
+	return bgfx::ViewId( limit - 1 );
+}
+
+void
+BgfxRenderer::SetupShadowViewOrder()
+{
+	const bgfx::Caps* caps = bgfx::getCaps();
+	const U32 limit = caps ? caps->limits.maxViews : 256;
+
+	const bgfx::ViewId shadow = GetShadowViewId();
+
+	// The shadow view, then every other id in its natural order. Only the shadow
+	// pass moves: 0, 1, 2 ... keep their relative order, so the 2D render targets
+	// that rely on it are unaffected.
+	// 256 is the most view ids bgfx can have -- BGFX_CONFIG_MAX_VIEWS is a build
+	// setting of bgfx's own and not on the public header, so the ceiling is spelled
+	// out here and the loop is bounded by what the caps actually report.
+	enum { kMaxViews = 256 };
+
+	bgfx::ViewId order[kMaxViews];
+
+	U32 count = 0;
+
+	order[count++] = shadow;
+
+	for ( U32 i = 0; i < limit && count < kMaxViews; ++i )
+	{
+		if ( bgfx::ViewId( i ) != shadow )
+		{
+			order[count++] = bgfx::ViewId( i );
+		}
+	}
+
+	bgfx::setViewOrder( 0, U16( count ), order );
+}
+
+void
+BgfxRenderer::EnsureShadowViewOrder()
+{
+	if ( fShadowOrderSet )
+	{
+		return;
+	}
+
+	fShadowOrderSet = true;
+
+	SetupShadowViewOrder();
+}
+
 bgfx::ViewId
 BgfxRenderer::AcquireViewId()
 {
 	const bgfx::Caps* caps = bgfx::getCaps();
-	const U32 limit = caps ? caps->limits.maxViews : 256;
+
+	// One short of the limit: the last id belongs to the shadow pass.
+	const U32 limit = ( caps ? caps->limits.maxViews : 256 ) - 1;
 
 	// Every render target bound in a frame takes an id of its own, and a scene
 	// with enough filters and snapshots can ask for more than bgfx has. Reusing
@@ -407,7 +484,13 @@ BgfxRenderer::AcquireViewId()
 		return bgfx::ViewId( limit - 1 );
 	}
 
-	return fNextViewId++;
+	const bgfx::ViewId view = fNextViewId++;
+
+	// Same reason as view 0: a render target's contents are drawn in the order
+	// they were submitted in.
+	SetSequentialViewMode( view );
+
+	return view;
 }
 
 void
@@ -415,6 +498,7 @@ BgfxRenderer::ResetViewIds()
 {
 	fNextViewId = 1;
 	fViewIdsExhausted = false;
+	fShadowOrderSet = false;
 }
 
 void

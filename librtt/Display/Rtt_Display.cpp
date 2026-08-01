@@ -17,8 +17,12 @@
 #include "Display/Rtt_MDisplayDelegate.h"
 #include "Display/Rtt_BitmapPaint.h"
 #include "Display/Rtt_CameraPaint.h"
+#include "Display/Rtt_GroupObject.h"
+#include "Display/Rtt_Object3D.h"
 #include "Display/Rtt_Paint.h"
 #include "Display/Rtt_Scene.h"
+#include "Display/Rtt_Physics3D.h"
+#include "Display/Rtt_Scene3D.h"
 #include "Display/Rtt_ShaderFactory.h"
 #include "Display/Rtt_SpritePlayer.h"
 #include "Display/Rtt_TextureFactory.h"
@@ -207,6 +211,8 @@ Display::Display( Runtime& owner )
 	fSpritePlayer( Rtt_NEW( owner.Allocator(), SpritePlayer( owner.Allocator() ) ) ),
 	fTextureFactory( Rtt_NEW( owner.Allocator(), TextureFactory( * this ) ) ),
 	fScene( Rtt_NEW( & owner.GetAllocator(), Scene( owner.Allocator(), * this ) ) ),
+	fScene3D( NULL ),
+	fPhysics3D( NULL ),
   fProfilingState( Rtt_NEW( owner.GetAllocator(), ProfilingState( owner.GetAllocator() ) ) ),
 	fStream( Rtt_NEW( owner.GetAllocator(), GPUStream( owner.GetAllocator() ) ) ),
 	fTarget( owner.Platform().CreateScreenSurface() ),
@@ -244,12 +250,50 @@ Display::~Display()
     Rtt_DELETE( fTarget );
     Rtt_DELETE( fStream );
     Rtt_DELETE( fScene );
+
+    // Before the 3D scene, and after the display objects have gone: physics holds
+    // raw pointers to the objects its bodies stand for, and a body outliving its
+    // object would have the next step write a transform into freed memory.
+    delete fPhysics3D;
+
+    // After the scene, because tearing the scene down destroys the display
+    // objects in it, and a 3D object's destructor unregisters itself here.
+    delete fScene3D;
+
     Rtt_DELETE( fProfilingState );
     Rtt_DELETE( fTextureFactory );
     Rtt_DELETE( fSpritePlayer );
     Rtt_DELETE( fShaderFactory );
     Rtt_DELETE( fRenderer );
     Rtt_DELETE( fDefaults );
+}
+
+Physics3D&
+Display::GetPhysics3D()
+{
+    if ( NULL == fPhysics3D )
+    {
+        fPhysics3D = new Physics3D( * this );
+    }
+
+    return * fPhysics3D;
+}
+
+Scene3D&
+Display::GetScene3D()
+{
+    if ( NULL == fScene3D )
+    {
+        fScene3D = new Scene3D;
+
+        // A 3D scene needs the depth buffer cleared every frame, and Corona
+        // only asks for that when this default is set. Turning it on here
+        // rather than making projects do it means the first 3D object drawn is
+        // the thing that enables it, and a purely 2D project never pays for it.
+        GetDefaults().SetEnableDepthInScene( true );
+    }
+
+    return * fScene3D;
 }
 
 static void
@@ -575,6 +619,16 @@ Display::Update()
 
 	up.Add( "Run sprite player" );
 
+    // Stepped before the frame event rather than after, so that an enterFrame
+    // listener reads the positions this frame will be drawn with instead of last
+    // frame's.
+    if ( fPhysics3D != NULL )
+    {
+        fPhysics3D->Advance( * this );
+
+        up.Add( "Advance 3D physics" );
+    }
+
     GetScene().QueueUpdateOfUpdatables();
 
 	up.Add( "Queue updatables" );
@@ -739,6 +793,42 @@ Display::ColorSample( float pos_x,
     Rtt_DELETE( paint );
 }
 
+bool
+Display::GetScreenBounds3D( DisplayObject& object, Rect& bounds ) const
+{
+    Object3D *object3D = object.AsObject3D();
+
+    if ( object3D != NULL )
+    {
+        Rect self;
+
+        if ( object3D->GetScreenBounds( *this, self ) )
+        {
+            bounds.Union( self );
+
+            return true;
+        }
+
+        return false;
+    }
+
+    GroupObject *group = object.AsGroupObject();
+
+    if ( group == NULL )
+    {
+        return false;
+    }
+
+    bool found = false;
+
+    for ( S32 i = 0, iMax = group->NumChildren(); i < iMax; ++i )
+    {
+        found |= GetScreenBounds3D( group->ChildAt( i ), bounds );
+    }
+
+    return found;
+}
+
 BitmapPaint *
 Display::Capture( DisplayObject *object,
                     Rect *screenBounds,
@@ -793,6 +883,21 @@ Display::Capture( DisplayObject *object,
         // Calculate the bounds of the given display object in pixels.
         // Clip the object to the screen's bounds.
         Rect objectBounds = object->StageBounds();
+
+        // A 3D object keeps no stage bounds -- what it covers depends on the
+        // camera (see Object3D::GetSelfBounds) -- so a capture of one has no
+        // rectangle to render into and comes back empty. Projecting its box
+        // through the camera gives it one, and does so at the only moment the
+        // answer is needed rather than every frame.
+        // Unioned rather than only used when there are none, so that a group
+        // holding both kinds of object captures all of what it holds.
+        Rect bounds3D;
+
+        if ( GetScreenBounds3D( *object, bounds3D ) )
+        {
+            objectBounds.Union( bounds3D );
+        }
+
         if (screenBounds)
         {
             objectBounds.Intersect(*screenBounds);
@@ -891,9 +996,21 @@ Display::Capture( DisplayObject *object,
     BitmapPaint *paint = Rtt_NEW( allocator,
                                     BitmapPaint( tex ) );
 
+    // A capture re-renders the scene into a target of its own, and that target
+    // needs the same buffers the window has or what is drawn into it comes out
+    // differently. 3D is what makes this show: without a depth buffer a model's
+    // far side draws over its near one, so a capture of a scene that looks solid
+    // on screen comes back inside-out.
+    FrameBufferObject::ExtraOptions captureOptions;
+
+    captureOptions.depthBits = ( fScene3D != NULL || GetDefaults().GetEnableDepthInScene() ) ? 24 : 0;
+    captureOptions.stencilBits = GetDefaults().GetEnableStencilInScene() ? 8 : 0;
+    captureOptions.mustClear = true;
+
     fbo = Rtt_NEW( allocator,
                     FrameBufferObject( allocator,
-                                        paint->GetTexture() ) );
+                                        paint->GetTexture(),
+                                        &captureOptions ) );
 
     ////////////////////////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////////////
@@ -930,8 +1047,11 @@ Display::Capture( DisplayObject *object,
 
     Renderer::ExtraClearOptions extra;
     
-    extra.clearDepth = GetDefaults().GetEnableDepthInScene();
-    extra.clearStencil = GetDefaults().GetEnableStencilInScene();
+    // Whatever the target actually has, which for a 3D scene is a depth buffer
+    // the defaults alone would not have asked for; a buffer left uncleared holds
+    // the previous capture's depths and rejects most of this one.
+    extra.clearDepth = captureOptions.depthBits > 0;
+    extra.clearStencil = captureOptions.stencilBits > 0;
     extra.depthClearValue = GetDefaults().GetSceneDepthClearValue();
     extra.stencilClearValue = GetDefaults().GetSceneStencilClearValue();
 

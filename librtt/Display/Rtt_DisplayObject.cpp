@@ -803,6 +803,12 @@ DisplayObject::AsGroupObject() const
     return NULL;
 }
 
+Object3D*
+DisplayObject::AsObject3D()
+{
+    return NULL;
+}
+
 void
 DisplayObject::LocalToContent( Vertex2& v ) const
 {
